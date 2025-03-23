@@ -1,37 +1,43 @@
 const axios = require('axios');
-require('dotenv').config();
 
+// Función para obtener todos los productos
 const getProducts = async (req, res) => {
   try {
-    let allProducts = [];
-    let nextPageUrl = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products.json?limit=250`;
+    const response = await axios({
+      method: 'get',
+      url: `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products.json?limit=250`, // Máximo permitido por la API
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+      },
+    });
 
-    // Bucle para manejar la paginación
-    while (nextPageUrl) {
-      const response = await axios.get(nextPageUrl, {
-        headers: {
-          'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
-        },
-      });
-
-      allProducts = allProducts.concat(response.data.products);
-
-      // Extraer el enlace de la siguiente página si existe
-      const linkHeader = response.headers['link'];
-      nextPageUrl = null;
-      if (linkHeader) {
-        const nextLink = linkHeader.split(',').find(link => link.includes('rel="next"'));
-        if (nextLink) {
-          nextPageUrl = nextLink.split(';')[0].trim().replace(/<(.*)>/, '$1');
-        }
-      }
-    }
-
-    res.status(200).json({ products: allProducts });
+    res.status(200).json(response.data);
   } catch (error) {
-    console.error('Error al obtener productos:', error);
-    res.status(500).json({ message: 'Error al obtener productos', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener productos', error });
   }
 };
 
-module.exports = { getProducts };
+// Función para obtener los detalles de un producto específico
+const getProductDetails = async (req, res) => {
+  const { id } = req.params; // Obtenemos el id del producto desde los parámetros de la URL
+  try {
+    const response = await axios({
+      method: 'get',
+      url: `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products/${id}.json`,
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+      },
+    });
+
+    res.status(200).json(response.data); // Devolvemos los detalles del producto
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener los detalles del producto', error });
+  }
+};
+
+module.exports = {
+  getProducts,
+  getProductDetails,  // Exportamos la función para obtener los detalles
+};
