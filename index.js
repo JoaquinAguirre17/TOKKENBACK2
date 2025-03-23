@@ -2,7 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const productRoutes = require('./routes/productRoutes');
+const productRoutes = require('./routes/shopifyRoutes');
 
 const app = express();
 const port = process.env.PORT || 5000;
