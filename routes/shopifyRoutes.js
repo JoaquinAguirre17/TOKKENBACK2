@@ -14,7 +14,7 @@ router.post('/draft-order', shopifyController.createDraftOrder);
 // Confirmar o cancelar la orden según acción del staff
 router.post('/confirm-order', shopifyController.confirmOrder);
 
-// Vista HTML para el staff con los botones "Se vendió / No se vendió"
+// Vista HTML para el staff con los botones "Se vendió / No se vendiooó"
 router.get('/staff/order/:draftOrderId', shopifyController.getStaffOrderView);
 
 module.exports = router;
