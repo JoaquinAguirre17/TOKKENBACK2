@@ -126,20 +126,16 @@ const createDraftOrder = async (req, res) => {
   const { products, customerNote } = req.body;
 
   try {
-    if (!Array.isArray(products) || products.length === 0) {
-      return res.status(400).json({ message: 'No se recibieron productos válidos' });
-    }
-
-    console.log('📥 Productos recibidos en /draft-order:', products);
-
+    // Validar y construir los line_items
     const line_items = products.map(p => {
-      if (!p.variants || !p.variants[0]?.id) {
-        throw new Error(`❌ Producto sin variant válido: ${p.title}`);
+      const variantId = p?.variants?.[0]?.id;
+      if (!variantId) {
+        throw new Error(`❌ Producto sin variant_id válido: ${p.title}`);
       }
 
       return {
         title: p.title,
-        variant_id: p.variants[0].id,
+        variant_id: variantId,
         quantity: p.count
       };
     });
@@ -152,8 +148,10 @@ const createDraftOrder = async (req, res) => {
       }
     };
 
-    console.log('📦 Datos enviados a Shopify:', JSON.stringify(draftOrderData, null, 2));
+    // 🔍 Log para verificar lo que se está enviando a Shopify
+    console.log('📦 Enviando draft order a Shopify:', JSON.stringify(draftOrderData, null, 2));
 
+    // Petición a la API de Shopify
     const response = await axios.post(
       `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`,
       draftOrderData,
@@ -166,6 +164,7 @@ const createDraftOrder = async (req, res) => {
     );
 
     const draftOrder = response.data.draft_order;
+
     const controlPanelLink = `${process.env.FRONTEND_URL}/orden-control/${draftOrder.id}`;
 
     res.status(201).json({
@@ -176,10 +175,11 @@ const createDraftOrder = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error al crear draft order:');
-    console.error('👉 Detalles:', error.response?.data || error.message);
+    console.error('👉 Detalles:', error.message || error.response?.data || error);
     res.status(500).json({ message: 'Error al crear la orden borrador', error });
   }
 };
+
 
 module.exports = {
   getProducts,
