@@ -4,17 +4,17 @@ const express = require('express');
 const cors = require('cors');
 const productRoutes = require('./routes/shopifyRoutes');
 
-
 const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
 
-// Configurar CORS (permite solicitudes del frontend en Hostinger)
+// Configurar CORS para permitir GET y POST
 app.use(cors({
-    origin: 'https://tokkencba.com',  // Reemplazar con el dominio correcto
-    methods: ['GET'],
+    origin: 'https://tokkencba.com',  // Cambiar si el dominio cambia
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Rutas
