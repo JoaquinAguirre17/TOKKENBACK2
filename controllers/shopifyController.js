@@ -165,7 +165,7 @@ const createDraftOrder = async (req, res) => {
 
     const draftOrder = response.data.draft_order;
 
-    const controlPanelLink = `${process.env.FRONTEND_URL}/orden-control/${draftOrder.id}`;
+    const controlPanelLink = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
     res.status(201).json({
       draftOrderId: draftOrder.id,
