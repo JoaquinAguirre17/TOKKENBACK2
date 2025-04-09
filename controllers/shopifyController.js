@@ -124,7 +124,7 @@ const createDraftOrder = async (req, res) => {
   try {
     const line_items = products.map(p => ({
       title: p.title,
-      variant_id: p.variants[0].id,
+      variant_id: p.variants[0].id,  // 👈 Este puede fallar si variants[0] no existe
       quantity: p.count
     }));
 
@@ -149,7 +149,6 @@ const createDraftOrder = async (req, res) => {
 
     const draftOrder = response.data.draft_order;
 
-    // Generamos un link personalizado para el staff
     const controlPanelLink = `${process.env.FRONTEND_URL}/orden-control/${draftOrder.id}`;
 
     res.status(201).json({
@@ -159,10 +158,12 @@ const createDraftOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al crear draft order:', error.response?.data || error);
+    console.error('❌ Error al crear draft order:');
+    console.error('👉 Detalles:', error.response?.data || error.message);
     res.status(500).json({ message: 'Error al crear la orden borrador', error });
   }
 };
+
 
 module.exports = {
   getProducts,
