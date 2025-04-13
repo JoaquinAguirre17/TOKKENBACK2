@@ -181,35 +181,36 @@ const createDraftOrder = async (req, res) => {
 };
 
 const searchProducts = async (req, res) => {
-  const { query } = req.query;  // Obtener la búsqueda desde el query string
+  const { query } = req.query;
 
-  // Validar si se proporciona el parámetro 'query'
   if (!query || query.trim() === "") {
     return res.status(400).json({ message: 'La consulta de búsqueda no puede estar vacía.' });
   }
 
   try {
-    // Llamada a la API de Shopify para buscar productos usando el parámetro 'query' en el título
+    // Trae los primeros 250 productos
     const response = await axios({
       method: 'get',
-      url: `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products.json`,  // Endpoint correcto
-      params: {
-        title: query,  // Filtra productos por título
-        limit: 10,      // Limita la cantidad de resultados a 10
-      },
+      url: `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products.json`,
+      params: { limit: 250 },
       headers: {
         'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
       },
     });
 
-    // Responder con los productos filtrados
-    if (response.data.products && response.data.products.length > 0) {
-      return res.status(200).json(response.data.products);
-    } else {
+    const allProducts = response.data.products;
+
+    // Filtra en el backend por coincidencias en el título
+    const filtered = allProducts.filter(p =>
+      p.title.toLowerCase().includes(query.toLowerCase())
+    );
+
+    if (filtered.length === 0) {
       return res.status(404).json({ message: 'No se encontraron productos que coincidan con la búsqueda.' });
     }
+
+    return res.status(200).json(filtered.slice(0, 10));  // Limita a 10 resultados
   } catch (error) {
-    // Manejo de errores de la API
     console.error('Error al buscar productos:', error.message || error.response?.data || error);
     res.status(500).json({ message: 'Error al realizar la búsqueda de productos', error: error.message });
   }
