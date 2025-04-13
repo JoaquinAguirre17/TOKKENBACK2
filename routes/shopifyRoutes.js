@@ -17,4 +17,5 @@ router.post('/confirm-order', shopifyController.confirmOrder);
 // Vista HTML para el staff con los botones "Se vendió / No se vendiooó"
 router.get('/staff/order/:draftOrderId', shopifyController.getStaffOrderView);
 
+router.get('/products/search', searchProducts);
 module.exports = router;
