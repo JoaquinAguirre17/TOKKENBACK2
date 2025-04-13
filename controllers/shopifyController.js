@@ -187,7 +187,6 @@ const searchProducts = async (req, res) => {
   }
 
   try {
-    // Llamada a la API de Shopify para buscar productos usando el parámetro query
     const response = await axios({
       method: 'get',
       url: `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/products.json`,
@@ -199,13 +198,14 @@ const searchProducts = async (req, res) => {
         'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
       },
     });
-
-    // Responder con los productos filtrados
+  
     res.status(200).json(response.data.products);
   } catch (error) {
-    console.error('Error al buscar productos:', error);
+    console.error('Error al buscar productos:', error.response ? error.response.data : error.message);
     res.status(500).json({ message: 'Error al realizar la búsqueda de productos', error });
   }
+  
+  
 };
 
 
