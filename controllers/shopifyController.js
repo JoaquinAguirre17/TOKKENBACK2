@@ -201,9 +201,11 @@ const searchProducts = async (req, res) => {
   
     res.status(200).json(response.data.products);
   } catch (error) {
+    // Registrar la respuesta completa del error
     console.error('Error al buscar productos:', error.response ? error.response.data : error.message);
     res.status(500).json({ message: 'Error al realizar la búsqueda de productos', error });
   }
+  
   
   
 };
