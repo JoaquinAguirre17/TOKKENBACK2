@@ -182,63 +182,11 @@ const searchProducts = async (req, res) => {
     res.status(500).json({ message: 'Error al realizar la búsqueda de productos', error: error.message });
   }
 };
-// Crear orden borrador desde POS
-const createDraftOrderPOS = async (req, res) => {
-  const { productos, metodoPago, vendedor, total } = req.body;
 
-  try {
-    const line_items = productos.map(p => {
-      const variantId = p?.variants?.[0]?.id || p.variant_id;
-      if (!variantId) throw new Error(`Producto sin variant_id válido: ${p.title}`);
-      return {
-        title: p.title,
-        variant_id: variantId,
-        quantity: p.cantidad,
-        price: p.precio
-      };
-    });
-
-    const draftOrderData = {
-      draft_order: {
-        line_items,
-        note: `Venta POS - Vendedor: ${vendedor}`,
-        tags: 'POS',
-        note_attributes: [
-          { name: 'Vendedor', value: vendedor },
-          { name: 'Método de pago', value: metodoPago },
-          { name: 'Total', value: total }
-        ]
-      }
-    };
-
-    const response = await axios.post(
-      `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`,
-      draftOrderData,
-      {
-        headers: {
-          'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const draftOrder = response.data.draft_order;
-    res.status(201).json({
-      draftOrderId: draftOrder.id,
-      invoice_url: draftOrder.invoice_url,
-      draftOrder
-    });
-
-  } catch (error) {
-    console.error('Error al crear draft order POS:', error.message || error.response?.data || error);
-    res.status(500).json({ message: 'Error al crear la orden borrador POS', error: error.message });
-  }
-};
 module.exports = {
   getProducts,
   getProductDetails,
   createDraftOrder,
-  createDraftOrderPOS,
   confirmOrder,
   getStaffOrderView,
   searchProducts,
