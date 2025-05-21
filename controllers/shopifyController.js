@@ -37,30 +37,26 @@ const getProductDetails = async (req, res) => {
 
 // Crear orden borrador desde POS
 const createDraftOrder = async (req, res) => {
-  const { products, metodoPago, vendedor, total } = req.body;
+  const { productos, metodoPago, vendedor, total } = req.body;
 
   try {
-    if (!products || !Array.isArray(products) || products.length === 0) {
+    if (!productos || !Array.isArray(productos) || productos.length === 0) {
       return res.status(400).json({ message: 'El array de productos es obligatorio y no puede estar vacío.' });
     }
     if (!metodoPago || !vendedor || !total) {
       return res.status(400).json({ message: 'Faltan datos obligatorios: metodoPago, vendedor o total.' });
     }
 
-    const line_items = products.map(p => {
-      const variantGID = p.variants?.[0]?.id;
-      const price = p.variants?.[0]?.price;
-      const variant_id = variantGID?.split('/').pop(); // Extrae solo el ID numérico
-
-      if (!variant_id) {
+    const line_items = productos.map(p => {
+      if (!p.variant_id) {
         throw new Error(`❌ Producto sin variant_id válido: ${p.title}`);
       }
 
       return {
-        variant_id: Number(variant_id),
-        quantity: p.quantity || 1,
-        title: p.title,
-        price
+        variant_id: Number(p.variant_id),
+        quantity: p.cantidad || 1,
+        price: p.precio,
+        title: p.title
       };
     });
 
@@ -105,6 +101,7 @@ const createDraftOrder = async (req, res) => {
     });
   }
 };
+
 
 // Confirmar o cancelar la orden borrador
 const confirmOrder = async (req, res) => {
