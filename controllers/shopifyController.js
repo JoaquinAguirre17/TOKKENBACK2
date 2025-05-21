@@ -37,17 +37,17 @@ const getProductDetails = async (req, res) => {
 
 // Crear orden borrador desde POS
 const createDraftOrder = async (req, res) => {
-  const { productos, metodoPago, vendedor, total } = req.body;
+  const { products, metodoPago, vendedor, total } = req.body;
 
   try {
-    if (!productos || !Array.isArray(productos) || productos.length === 0) {
+    if (!products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ message: 'El array de productos es obligatorio y no puede estar vacío.' });
     }
     if (!metodoPago || !vendedor || !total) {
       return res.status(400).json({ message: 'Faltan datos obligatorios: metodoPago, vendedor o total.' });
     }
 
-    const line_items = productos.map(p => {
+    const line_items = products.map(p => {
       const variantGID = p.variants?.[0]?.id;
       const price = p.variants?.[0]?.price;
       const variant_id = variantGID?.split('/').pop(); // Extrae solo el ID numérico
