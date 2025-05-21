@@ -40,6 +40,14 @@ const createDraftOrder = async (req, res) => {
   const { productos, metodoPago, vendedor, total } = req.body;
 
   try {
+    // Validar datos de entrada
+    if (!productos || !Array.isArray(productos) || productos.length === 0) {
+      return res.status(400).json({ message: 'El array de productos es obligatorio y no puede estar vacío.' });
+    }
+    if (!metodoPago || !vendedor || !total) {
+      return res.status(400).json({ message: 'Faltan datos obligatorios: metodoPago, vendedor o total.' });
+    }
+
     // Construir los line_items
     const line_items = productos.map(p => {
       const variantId = p?.variants?.[0]?.id || p.variant_id;
@@ -67,6 +75,9 @@ const createDraftOrder = async (req, res) => {
       }
     };
 
+    // Log para depuración
+    console.log('DraftOrderData:', JSON.stringify(draftOrderData, null, 2));
+
     // Enviar a Shopify
     const response = await axios.post(
       `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`,
@@ -87,8 +98,12 @@ const createDraftOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error al crear draft order:', error.message || error.response?.data || error);
-    res.status(500).json({ message: 'Error al crear la orden borrador', error: error.message });
+    // Log detallado del error
+    console.error('❌ Error al crear draft order:', error.response?.data || error.message || error);
+    res.status(500).json({
+      message: 'Error al crear la orden borrador',
+      error: error.response?.data || error.message || error
+    });
   }
 };
 
