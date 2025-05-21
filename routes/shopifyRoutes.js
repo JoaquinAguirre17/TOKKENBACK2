@@ -11,8 +11,6 @@ router.get('/products/:id', shopifyController.getProductDetails);
 // Crear orden borrador (draft order) desde WhatsApp o web
 router.post('/draft-order', shopifyController.createDraftOrder);
 
-// Crear orden borrador desde POS (con tag POS y atributos personalizados)
-router.post('/ventas-pos', shopifyController.createDraftOrderPOS);
 
 // Confirmar o cancelar la orden según acción del staff
 router.post('/confirm-order', shopifyController.confirmOrder);
