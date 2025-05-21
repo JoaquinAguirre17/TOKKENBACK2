@@ -48,14 +48,19 @@ const createDraftOrder = async (req, res) => {
     }
 
     const line_items = productos.map(p => {
-      if (!p.variant_id) {
+      const variantGID = p.variants?.[0]?.id;
+      const price = p.variants?.[0]?.price;
+      const variant_id = variantGID?.split('/').pop(); // Extrae solo el ID numérico
+
+      if (!variant_id) {
         throw new Error(`❌ Producto sin variant_id válido: ${p.title}`);
       }
+
       return {
+        variant_id: Number(variant_id),
+        quantity: p.quantity || 1,
         title: p.title,
-        variant_id: p.variant_id,
-        quantity: p.cantidad,
-        price: p.precio
+        price
       };
     });
 
