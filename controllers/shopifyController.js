@@ -35,14 +35,14 @@ const getProductDetails = async (req, res) => {
   }
 };
 
-// Crear orden borrador desde POS
-const createDraftOrder = async (req, res) => {
-  const { productos, metodoPago, vendedor, total, tags } = req.body; // <-- agregamos tags
+const createOrder = async (req, res) => {
+  const { productos, metodoPago, vendedor, total, tags = [], fecha } = req.body;
 
   try {
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
       return res.status(400).json({ message: 'El array de productos es obligatorio y no puede estar vacío.' });
     }
+
     if (!metodoPago || !vendedor || !total) {
       return res.status(400).json({ message: 'Faltan datos obligatorios: metodoPago, vendedor o total.' });
     }
@@ -54,8 +54,8 @@ const createDraftOrder = async (req, res) => {
 
       return {
         variant_id: Number(p.variant_id),
-        quantity: p.cantidad || 1,
-        price: p.precio,
+        quantity: p.cantidad || p.quantity || 1,
+        price: p.precio || p.price,
         title: p.title
       };
     });
@@ -64,18 +64,18 @@ const createDraftOrder = async (req, res) => {
       draft_order: {
         line_items,
         note: `Venta - Vendedor: ${vendedor}`,
-        tags: Array.isArray(tags) ? tags.join(', ') : (tags || ''), // si viene array, lo unimos en string separado por comas
+        tags: Array.isArray(tags) ? tags.join(', ') : tags,
         note_attributes: [
           { name: 'Vendedor', value: vendedor },
           { name: 'Método de pago', value: metodoPago },
-          { name: 'Total', value: total }
+          { name: 'Total', value: total },
+          { name: 'Fecha', value: fecha ? new Date(fecha).toLocaleString() : new Date().toLocaleString() }
         ]
       }
     };
 
-    console.log('DraftOrderData:', JSON.stringify(draftOrderData, null, 2));
-
-    const response = await axios.post(
+    // 1. Crear la orden borrador
+    const draftOrderResponse = await axios.post(
       `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`,
       draftOrderData,
       {
@@ -86,11 +86,33 @@ const createDraftOrder = async (req, res) => {
       }
     );
 
-    const draftOrder = response.data.draft_order;
+    const draftOrder = draftOrderResponse.data.draft_order;
+    const isVentaLocal = tags.includes('local');
 
+    // 2. Si es venta local, completar la orden automáticamente
+    if (isVentaLocal) {
+      const completeResponse = await axios.put(
+        `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
+        {},
+        {
+          headers: {
+            'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return res.status(201).json({
+        message: "✅ Venta local registrada y completada.",
+        order: completeResponse.data.order
+      });
+    }
+
+    // 3. Si es venta web (ej: whatsapp), devolver la draft order
     const staff_control_url = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
-    res.status(201).json({
+    return res.status(201).json({
+      message: "✅ Orden borrador creada (venta web)",
       draftOrderId: draftOrder.id,
       invoice_url: draftOrder.invoice_url,
       staff_control_url,
@@ -98,9 +120,9 @@ const createDraftOrder = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error al crear draft order:', error.response?.data || error.message || error);
+    console.error('❌ Error al crear orden:', error.response?.data || error.message || error);
     res.status(500).json({
-      message: 'Error al crear la orden borrador',
+      message: 'Error al crear la orden',
       error: error.response?.data || error.message || error
     });
   }
@@ -189,7 +211,7 @@ const searchProducts = async (req, res) => {
 module.exports = {
   getProducts,
   getProductDetails,
-  createDraftOrder,
+  createOrder,
   confirmOrder,
   searchProducts,
 };
