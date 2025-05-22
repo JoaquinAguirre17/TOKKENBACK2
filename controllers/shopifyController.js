@@ -91,6 +91,7 @@ const createDraftOrder = async (req, res) => {
     // 🔧 Agregado: Generamos la URL de control para el staff
     const staff_control_url = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
+
     // 🔧 Agregado: devolvemos también la URL de control al frontend
     res.status(201).json({
       draftOrderId: draftOrder.id,
@@ -157,7 +158,7 @@ const confirmOrder = async (req, res) => {
   }
 };
 
-// Vista HTML para staff
+/* Vista HTML para staff
 const getStaffOrderView = async (req, res) => {
   const { draftOrderId } = req.params;
   const html = `
@@ -183,7 +184,7 @@ const getStaffOrderView = async (req, res) => {
   `;
   res.send(html);
 };
-
+*/
 // Buscar productos
 const searchProducts = async (req, res) => {
   const { query } = req.query;
