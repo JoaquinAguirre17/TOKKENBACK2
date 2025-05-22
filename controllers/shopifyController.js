@@ -111,6 +111,7 @@ const createDraftOrder = async (req, res) => {
 // Confirmar o cancelar la orden borrador
 const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
+  console.log('req.body:', req.body);  // <- esto ayuda a debuggear
 
   try {
     if (action === 'vendido') {
