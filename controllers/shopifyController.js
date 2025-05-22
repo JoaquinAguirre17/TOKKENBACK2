@@ -89,7 +89,7 @@ const createDraftOrder = async (req, res) => {
     const draftOrder = response.data.draft_order;
 
     // 🔧 Agregado: Generamos la URL de control para el staff
-    const staff_control_url = `https://tokkenback2.onrender.com/api/shopify/staff/order/${draftOrder.id}`;
+    const staff_control_url = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
     // 🔧 Agregado: devolvemos también la URL de control al frontend
     res.status(201).json({
