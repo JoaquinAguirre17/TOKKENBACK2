@@ -108,13 +108,22 @@ const createDraftOrder = async (req, res) => {
   }
 };
 
-// Confirmar o cancelar la orden borrador
 const confirmOrder = async (req, res) => {
+  console.log('REQ.BODY recibido:', req.body);  // Qué llega en el body
+
   const { draftOrderId, action } = req.body;
-  console.log('req.body:', req.body);  // <- esto ayuda a debuggear
+
+  if (!draftOrderId || !action) {
+    console.log('Falta draftOrderId o action en la petición');
+    return res.status(400).json({ message: 'Faltan draftOrderId o action' });
+  }
+
+  console.log('draftOrderId:', draftOrderId);
+  console.log('action:', action);
 
   try {
     if (action === 'vendido') {
+      console.log('Ejecutando confirmación de orden (vendido)');
       await axios.put(
         `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrderId}/complete.json`,
         {},
@@ -124,8 +133,10 @@ const confirmOrder = async (req, res) => {
           },
         }
       );
+      console.log('Orden confirmada y completada correctamente');
       return res.status(200).json({ message: 'Orden confirmada y completada' });
     } else if (action === 'no-vendido') {
+      console.log('Ejecutando cancelación de orden (no-vendido)');
       await axios.delete(
         `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrderId}.json`,
         {
@@ -134,8 +145,10 @@ const confirmOrder = async (req, res) => {
           },
         }
       );
+      console.log('Orden cancelada correctamente');
       return res.status(200).json({ message: 'Orden cancelada' });
     } else {
+      console.log('Acción inválida recibida:', action);
       return res.status(400).json({ message: 'Acción inválida' });
     }
   } catch (error) {
