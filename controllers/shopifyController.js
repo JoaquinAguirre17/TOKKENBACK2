@@ -158,33 +158,7 @@ const confirmOrder = async (req, res) => {
   }
 };
 
-/* Vista HTML para staff
-const getStaffOrderView = async (req, res) => {
-  const { draftOrderId } = req.params;
-  const html = `
-    <html>
-      <head>
-        <title>Confirmar Orden</title>
-        <style>
-          body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; }
-          button { padding: 12px 24px; margin: 10px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; }
-          .confirmar { background-color: #4caf50; color: white; }
-          .cancelar { background-color: #f44336; color: white; }
-        </style>
-      </head>
-      <body>
-        <h2>¿Se concretó la venta?</h2>
-        <form method="POST" action="/api/shopify/confirm-order">
-          <input type="hidden" name="draftOrderId" value="${draftOrderId}" />
-          <button class="confirmar" name="action" value="vendido">✅ Se vendió</button>
-          <button class="cancelar" name="action" value="no-vendido">❌ No se vendió</button>
-        </form>
-      </body>
-    </html>
-  `;
-  res.send(html);
-};
-*/
+
 // Buscar productos
 const searchProducts = async (req, res) => {
   const { query } = req.query;
