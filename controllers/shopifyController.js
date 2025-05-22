@@ -63,8 +63,8 @@ const createDraftOrder = async (req, res) => {
     const draftOrderData = {
       draft_order: {
         line_items,
-        note: `Venta POS - Vendedor: ${vendedor}`,
-        tags: 'POS',
+        note: `Venta Web- Vendedor: ${vendedor}`,
+        tags: 'WhatsApp',
         note_attributes: [
           { name: 'Vendedor', value: vendedor },
           { name: 'Método de pago', value: metodoPago },
