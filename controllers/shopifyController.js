@@ -219,6 +219,5 @@ module.exports = {
   getProductDetails,
   createDraftOrder,
   confirmOrder,
-  getStaffOrderView,
   searchProducts,
 };
