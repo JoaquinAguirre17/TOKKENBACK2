@@ -37,7 +37,7 @@ const getProductDetails = async (req, res) => {
 
 // Crear orden borrador desde POS
 const createDraftOrder = async (req, res) => {
-  const { productos, metodoPago, vendedor, total } = req.body;
+  const { productos, metodoPago, vendedor, total, tags } = req.body; // <-- agregamos tags
 
   try {
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
@@ -63,8 +63,8 @@ const createDraftOrder = async (req, res) => {
     const draftOrderData = {
       draft_order: {
         line_items,
-        note: `Venta Web- Vendedor: ${vendedor}`,
-        tags: 'WhatsApp',
+        note: `Venta - Vendedor: ${vendedor}`,
+        tags: Array.isArray(tags) ? tags.join(', ') : (tags || ''), // si viene array, lo unimos en string separado por comas
         note_attributes: [
           { name: 'Vendedor', value: vendedor },
           { name: 'Método de pago', value: metodoPago },
@@ -88,15 +88,12 @@ const createDraftOrder = async (req, res) => {
 
     const draftOrder = response.data.draft_order;
 
-    // 🔧 Agregado: Generamos la URL de control para el staff
     const staff_control_url = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
-
-    // 🔧 Agregado: devolvemos también la URL de control al frontend
     res.status(201).json({
       draftOrderId: draftOrder.id,
       invoice_url: draftOrder.invoice_url,
-      staff_control_url, // 🔧 agregado
+      staff_control_url,
       draftOrder
     });
 
@@ -108,6 +105,7 @@ const createDraftOrder = async (req, res) => {
     });
   }
 };
+
 
 const confirmOrder = async (req, res) => {
   console.log('REQ.BODY recibido:', req.body);  // Qué llega en el body
