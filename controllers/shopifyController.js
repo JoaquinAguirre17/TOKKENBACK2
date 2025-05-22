@@ -87,9 +87,15 @@ const createDraftOrder = async (req, res) => {
     );
 
     const draftOrder = response.data.draft_order;
+
+    // 🔧 Agregado: Generamos la URL de control para el staff
+    const staff_control_url = `https://tokkenback2.onrender.com/api/shopify/staff/order/${draftOrder.id}`;
+
+    // 🔧 Agregado: devolvemos también la URL de control al frontend
     res.status(201).json({
       draftOrderId: draftOrder.id,
       invoice_url: draftOrder.invoice_url,
+      staff_control_url, // 🔧 agregado
       draftOrder
     });
 
@@ -101,7 +107,6 @@ const createDraftOrder = async (req, res) => {
     });
   }
 };
-
 
 // Confirmar o cancelar la orden borrador
 const confirmOrder = async (req, res) => {
@@ -138,7 +143,7 @@ const confirmOrder = async (req, res) => {
   }
 };
 
-// Vista HTML para staff (opcional)
+// Vista HTML para staff
 const getStaffOrderView = async (req, res) => {
   const { draftOrderId } = req.params;
   const html = `
