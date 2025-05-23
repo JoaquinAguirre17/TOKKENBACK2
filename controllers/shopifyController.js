@@ -233,17 +233,20 @@ const obtenerVentasCierreCaja = async (req, res) => {
         monto,
         comision,
         vendedor,
-        metodoPago,
-        fecha: order.createdAt,
+        medioPago: metodoPago,
+        hora: dayjs(order.createdAt).format('HH:mm'),
       };
     });
 
-    res.status(200).json(ventas);
+    // 👇 Aquí está el cambio importante
+    res.status(200).json({ ventas });
+
   } catch (error) {
     console.error('Error al obtener ventas para cierre de caja:', error.response?.data || error.message || error);
     res.status(500).json({ error: 'Error al obtener ventas', message: error.message || error.toString() });
   }
 };
+
 
 // Exportar ventas a Excel
 const exportarVentasExcel = async (req, res) => {
