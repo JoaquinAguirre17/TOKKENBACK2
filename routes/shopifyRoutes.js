@@ -19,7 +19,7 @@ router.post('/confirm-order', shopifyController.confirmOrder);
 router.get('/cierre-caja', shopifyController.obtenerVentasCierreCaja);
 
 // Para generar y descargar el Excel
-router.get('/cierre-caja/excel', shopifyController.cierreCaja);
+router.get('/cierre-caja/excel', shopifyController.exportarVentasExcel);
 
 
 // Buscar productos
