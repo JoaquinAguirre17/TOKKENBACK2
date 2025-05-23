@@ -180,8 +180,6 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    // Filtrar solo por día completo (fecha ISO sin hora, Shopify query no admite directamente rango solo fecha)
-    // Usamos >= fechaT00:00:00 y < siguiente díaT00:00:00 para cubrir todo el día
     const fechaInicio = dayjs(fecha).startOf('day').toISOString();
     const fechaFin = dayjs(fecha).add(1, 'day').startOf('day').toISOString();
 
@@ -213,6 +211,10 @@ const obtenerVentasCierreCaja = async (req, res) => {
       { headers: HEADERS }
     );
 
+    if (!response.data || !response.data.data || !response.data.data.orders) {
+      return res.status(500).json({ error: 'Datos inválidos recibidos de Shopify' });
+    }
+
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
     const ventas = orders.map(order => {
@@ -237,9 +239,15 @@ const obtenerVentasCierreCaja = async (req, res) => {
     res.json({ ventas });
   } catch (error) {
     console.error('Error al obtener ventas para cierre de caja:', error);
+
+    if (error.response) {
+      console.error('Respuesta de error:', error.response.data);
+    }
+
     res.status(500).json({ error: 'Error al obtener ventas' });
   }
 };
+
 
 
 // Generar y descargar Excel para cierre de caja
