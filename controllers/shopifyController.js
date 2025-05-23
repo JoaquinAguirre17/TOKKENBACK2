@@ -191,44 +191,41 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const fechaFin = dayjs(fecha).add(1, 'day').startOf('day');
 
     const query = `
-      query GetOrders($query: String!) {
-        orders(first: 100, query: $query) {
-          edges {
-            node {
-              id
-              name
-              createdAt
-              totalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-              tags
-              note
-              transactions(first: 5) {
-                edges {
-                  node {
-                    id
-                    status
-                    amount {
-                      amount
-                      currencyCode
-                    }
-                    kind
-                    processedAt
-                  }
-                }
-              }
-              customer {
-                displayName
-                email
-              }
+  query GetOrders($query: String!) {
+    orders(first: 100, query: $query) {
+      edges {
+        node {
+          id
+          name
+          createdAt
+          totalPriceSet {
+            shopMoney {
+              amount
+              currencyCode
             }
+          }
+          tags
+          note
+          transactions {
+            id
+            status
+            amount {
+              amount
+              currencyCode
+            }
+            kind
+            processedAt
+          }
+          customer {
+            displayName
+            email
           }
         }
       }
-    `;
+    }
+  }
+`;
+
 
     const variables = {
       query: "tag:local",
