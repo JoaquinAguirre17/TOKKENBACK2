@@ -195,10 +195,32 @@ const obtenerVentasCierreCaja = async (req, res) => {
               id
               name
               createdAt
-              totalPriceSet { shopMoney { amount } }
+              totalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
               tags
-              noteAttributes { name value }
-              financialStatus
+              note
+              transactions(first: 5) {
+                edges {
+                  node {
+                    id
+                    status
+                    amount {
+                      amount
+                      currencyCode
+                    }
+                    kind
+                    processedAt
+                  }
+                }
+              }
+              customer {
+                displayName
+                email
+              }
             }
           }
         }
@@ -206,7 +228,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     `;
 
     const variables = {
-      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<${fechaFin}`,
+      query: `tag:local created_at:>=${fechaInicio} created_at:<${fechaFin}`
     };
 
     const response = await axios.post(
@@ -215,38 +237,46 @@ const obtenerVentasCierreCaja = async (req, res) => {
       { headers: HEADERS }
     );
 
-    console.log('Respuesta completa Shopify:', JSON.stringify(response.data, null, 2));
-
     if (response.data.errors) {
-      console.error('Errores GraphQL:', response.data.errors);
       return res.status(500).json({ error: 'Error en consulta GraphQL', details: response.data.errors });
-    }
-
-    if (!response.data || !response.data.data || !response.data.data.orders) {
-      return res.status(500).json({ error: 'Datos inválidos recibidos de Shopify' });
     }
 
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
-    // resto del código...
-    const ventas = orders.map(order => {
-      const vendedorAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'vendedor');
-      const medioAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'método de pago' || attr.name.toLowerCase() === 'medio_pago');
+    const parseNote = (note) => {
+      if (!note) return {};
+      const parts = note.split(';').map(p => p.trim());
+      const data = {};
+      parts.forEach(part => {
+        const [key, value] = part.split(':').map(s => s.trim().toLowerCase());
+        if (key && value) data[key] = value;
+      });
+      return data;
+    };
 
-      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
-      const comision = monto * 0.02;
+    const ventas = orders
+      .filter(order =>
+        order.transactions.edges.some(tx => tx.node.status === "SUCCESS" || tx.node.status === "AUTHORIZED")
+      )
+      .map(order => {
+        const noteData = parseNote(order.note);
+        const vendedor = noteData['vendedor'] || 'N/A';
+        const medioPago = noteData['medio_pago'] || noteData['método de pago'] || 'N/A';
 
-      return {
-        id: order.id,
-        orden: order.name,
-        fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
-        vendedor: vendedorAttr?.value || 'N/A',
-        medioPago: medioAttr?.value || 'N/A',
-        monto,
-        comision: comision.toFixed(2),
-        hora: dayjs(order.createdAt).format('HH:mm'),
-      };
-    });
+        const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+        const comision = monto * 0.02;
+
+        return {
+          id: order.id,
+          orden: order.name,
+          fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
+          vendedor,
+          medioPago,
+          monto,
+          comision: comision.toFixed(2),
+          hora: dayjs(order.createdAt).format('HH:mm'),
+        };
+      });
 
     res.json({ ventas });
   } catch (error) {
@@ -259,6 +289,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener ventas' });
   }
 };
+
 
 
 // Generar y descargar Excel para cierre de caja
