@@ -14,7 +14,7 @@ const HEADERS = {
 // Obtener todos los productos
 const getProducts = async (req, res) => {
   try {
-    const response = await axios.get(`${SHOPIFY_STORE_URL}/products.json?limit=250`, {
+    const response = await axios.get(`${process.env.SHOPIFY_STORE_URL}/products.json?limit=250`, {
       headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
     });
     res.status(200).json(response.data);
@@ -191,45 +191,35 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const fechaFin = dayjs(fecha).add(1, 'day').startOf('day');
 
     const query = `
-      query GetOrders($query: String!) {
-        orders(first: 100, query: $query) {
+      query GetOrders {
+  orders(first: 10, query: "tag:'local'") {
+    edges {
+      node {
+        id
+        name
+        tags
+        noteAttributes {
+          name
+          value
+        }
+        lineItems(first: 5) {
           edges {
             node {
-              id
-              name
-              createdAt
-              totalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-              tags
-              note
-              transactions(first: 5) {
-                edges {
-                  node {
-                    id
-                    status
-                    amount        # ← Solo esto, porque amount es un scalar de tipo Money
-                    kind
-                    processedAt
-                  }
-                }
-              }
-              customer {
-                displayName
-                email
-              }
-              noteAttributes {
-                name
-                value
+              title
+              quantity
+              variant {
+                id
+                price
               }
             }
           }
         }
+        createdAt
       }
-      `;
+    }
+  }
+}
+    `;
     const variables = {
       query: "tag:local",
     };
