@@ -281,7 +281,70 @@ const cierreCaja = async (req, res) => {
     res.status(500).json({ error: 'Error al generar cierre de caja' });
   }
 };
+const obtenerVentasCierreCaja = async (req, res) => {
+  try {
+    const { fecha } = req.query; // formato: YYYY-MM-DD
+    if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
+    // Define rango 9AM a 9PM en UTC (ajustar zona horaria si hace falta)
+    const fechaInicio = dayjs(`${fecha}T09:00:00Z`).toISOString();
+    const fechaFin = dayjs(`${fecha}T21:00:00Z`).toISOString();
+
+    const query = `
+      query GetOrders($query: String!) {
+        orders(first: 100, query: $query) {
+          edges {
+            node {
+              id
+              name
+              createdAt
+              totalPriceSet { shopMoney { amount } }
+              tags
+              noteAttributes { name value }
+              financialStatus
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<=${fechaFin}`,
+    };
+
+    const response = await axios.post(
+      SHOPIFY_API_URL,
+      { query, variables },
+      { headers: HEADERS }
+    );
+
+    const orders = response.data.data.orders.edges.map(edge => edge.node);
+
+    const ventas = orders.map(order => {
+      const vendedorAttr = order.noteAttributes.find(attr => attr.name === 'vendedor');
+      const medioAttr = order.noteAttributes.find(attr => attr.name === 'medio_pago');
+
+      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+      const comision = monto * 0.02;
+
+      return {
+        id: order.id,
+        orden: order.name,
+        fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
+        vendedor: vendedorAttr?.value || 'N/A',
+        medioPago: medioAttr?.value || 'N/A',
+        monto,
+        comision: comision.toFixed(2),
+        hora: dayjs(order.createdAt).format('HH:mm'),
+      };
+    });
+
+    res.json({ ventas });
+  } catch (error) {
+    console.error('Error al obtener ventas para cierre de caja:', error);
+    res.status(500).json({ error: 'Error al obtener ventas' });
+  }
+}
 module.exports = {
   getProducts,
   getProductDetails,
@@ -289,4 +352,5 @@ module.exports = {
   confirmOrder,
   searchProducts,
   cierreCaja,
+  obtenerVentasCierreCaja,
 };
