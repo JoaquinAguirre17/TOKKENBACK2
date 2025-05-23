@@ -333,9 +333,9 @@ const cierreCaja = async (req, res) => {
     res.send(buffer);
 
   } catch (error) {
-    console.error('Error en cierre de caja:', error);
-    res.status(500).json({ error: 'Error al generar el reporte de cierre de caja' });
-  }
+  console.error('Error en cierre-caja:', error);
+  res.status(500).json({ error: 'Error interno en cierre caja' });
+}
 };
 
 
