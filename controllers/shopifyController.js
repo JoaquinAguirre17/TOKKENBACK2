@@ -167,11 +167,15 @@ const searchProducts = async (req, res) => {
 };
 
 function extraerDatoDesdeNote(note, campo) {
-  // Extrae "campo: valor" dentro de note (insensible a mayúsculas)
-  const regex = new RegExp(`${campo}\\s*:\\s*([^\\-]+)`, 'i');
-  const match = regex.exec(note || '');
-  return match ? match[1].trim() : null;
+  if (!note) return null;
+  const regex = new RegExp(`${campo}:\\s*([^\\-]+)`);
+  const match = note.match(regex);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  return null;
 }
+
 
 // Obtener ventas para cierre de caja (GraphQL)
 const obtenerVentasCierreCaja = async (req, res) => {
