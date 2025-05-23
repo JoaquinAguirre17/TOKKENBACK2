@@ -248,21 +248,17 @@ const obtenerVentasCierreCaja = async (req, res) => {
   }
 };
 
-
-
 // Generar y descargar Excel para cierre de caja
 const cierreCaja = async (req, res) => {
   try {
-    const fecha = req.query.fecha; // 'YYYY-MM-DD'
+    const fecha = req.query.fecha;
     if (!fecha) {
       return res.status(400).json({ error: 'Falta el parámetro fecha' });
     }
 
-    // Fechas para filtrar el día completo
     const fechaInicio = new Date(`${fecha}T00:00:00Z`).toISOString();
     const fechaFin = new Date(`${fecha}T23:59:59Z`).toISOString();
 
-    // Parámetros para Shopify order.list
     const params = {
       status: 'any',
       limit: 250,
@@ -272,20 +268,34 @@ const cierreCaja = async (req, res) => {
       fields: 'id,name,created_at,total_price,tags,note_attributes,line_items'
     };
 
-    // Suponiendo que tienes el cliente Shopify con método order.list
+    console.log('Parámetros para shopify.order.list:', params);
+
     const orders = await shopify.order.list(params);
+
+    console.log('Órdenes recibidas:', orders.length);
 
     if (!orders || orders.length === 0) {
       return res.json({ message: 'No hay órdenes para la fecha indicada', orders: [] });
     }
 
-    // Filtrar solo órdenes con tag 'local'
-    const ordersLocal = orders.filter(order => order.tags.includes('local'));
+    // Protección si tags o note_attributes vienen undefined
+    const ordersLocal = orders.filter(order => {
+      if (!order.tags) {
+        console.warn(`Orden ${order.id} sin tags`);
+        return false;
+      }
+      return order.tags.includes('local');
+    });
 
-    // Procesar resumen para Excel
+    console.log('Órdenes con tag local:', ordersLocal.length);
+
     const resumen = ordersLocal.map(order => {
       const vendedor = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'vendedor')?.value || 'Sin vendedor';
-      const medioPago = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'medio_pago' || attr.name.toLowerCase() === 'método de pago')?.value || 'No especificado';
+      const medioPago = order.note_attributes?.find(attr => {
+        const nameLower = attr.name.toLowerCase();
+        return nameLower === 'medio_pago' || nameLower === 'método de pago';
+      })?.value || 'No especificado';
+
       const monto = parseFloat(order.total_price);
 
       return { id: order.id, nombre: order.name, vendedor, medioPago, monto };
@@ -295,9 +305,15 @@ const cierreCaja = async (req, res) => {
 
   } catch (error) {
     console.error('Error en cierreCaja:', error);
+
+    if (error.response) {
+      console.error('Respuesta de error de Shopify:', error.response.data);
+    }
+
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
+
 
 
 module.exports = {
