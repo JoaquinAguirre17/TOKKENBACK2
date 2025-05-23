@@ -15,7 +15,8 @@ router.post('/createOrder', shopifyController.createOrder);
 // Confirmar o cancelar la orden según acción del staff
 router.post('/confirm-order', shopifyController.confirmOrder);
 
-
+// Cierre de caja
+router.get('/cierre-caja', cierreCaja);
 
 // Buscar productos
 router.get('/products/search', shopifyController.searchProducts);

@@ -208,10 +208,85 @@ const searchProducts = async (req, res) => {
   }
 };
 
+const cierreCaja = async (req, res) => {
+  try {
+    const { fecha } = req.query; // formato: YYYY-MM-DD
+    const fechaInicio = dayjs(`${fecha}T09:00:00Z`).toISOString();
+    const fechaFin = dayjs(`${fecha}T21:00:00Z`).toISOString();
+
+    const query = `
+      query GetOrders($query: String!) {
+        orders(first: 100, query: $query) {
+          edges {
+            node {
+              name
+              createdAt
+              totalPriceSet { shopMoney { amount } }
+              tags
+              noteAttributes { name value }
+              financialStatus
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<=${fechaFin}`,
+    };
+
+    const response = await axios.post(
+      SHOPIFY_API_URL,
+      { query, variables },
+      { headers: HEADERS }
+    );
+
+    const orders = response.data.data.orders.edges.map(edge => edge.node);
+
+    // Transformar para Excel
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Cierre de Caja');
+    sheet.columns = [
+      { header: 'Orden', key: 'orden' },
+      { header: 'Fecha', key: 'fecha' },
+      { header: 'Vendedor', key: 'vendedor' },
+      { header: 'Medio de Pago', key: 'medio' },
+      { header: 'Monto', key: 'monto' },
+      { header: 'Comisión (2%)', key: 'comision' },
+    ];
+
+    orders.forEach(order => {
+      const vendedorAttr = order.noteAttributes.find(attr => attr.name === 'vendedor');
+      const medioAttr = order.noteAttributes.find(attr => attr.name === 'medio_pago');
+
+      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+      const comision = monto * 0.02;
+
+      sheet.addRow({
+        orden: order.name,
+        fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
+        vendedor: vendedorAttr?.value || 'N/A',
+        medio: medioAttr?.value || 'N/A',
+        monto,
+        comision: comision.toFixed(2),
+      });
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=cierre_caja.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error al generar cierre de caja:', error);
+    res.status(500).json({ error: 'Error al generar cierre de caja' });
+  }
+};
+
 module.exports = {
   getProducts,
   getProductDetails,
   createOrder,
   confirmOrder,
   searchProducts,
+  cierreCaja,
 };
