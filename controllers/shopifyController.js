@@ -215,12 +215,20 @@ const obtenerVentasCierreCaja = async (req, res) => {
       { headers: HEADERS }
     );
 
+    console.log('Respuesta completa Shopify:', JSON.stringify(response.data, null, 2));
+
+    if (response.data.errors) {
+      console.error('Errores GraphQL:', response.data.errors);
+      return res.status(500).json({ error: 'Error en consulta GraphQL', details: response.data.errors });
+    }
+
     if (!response.data || !response.data.data || !response.data.data.orders) {
       return res.status(500).json({ error: 'Datos inválidos recibidos de Shopify' });
     }
 
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
+    // resto del código...
     const ventas = orders.map(order => {
       const vendedorAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'vendedor');
       const medioAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'método de pago' || attr.name.toLowerCase() === 'medio_pago');
@@ -251,6 +259,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener ventas' });
   }
 };
+
 
 // Generar y descargar Excel para cierre de caja
 const cierreCaja = async (req, res) => {
