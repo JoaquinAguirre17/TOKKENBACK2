@@ -15,10 +15,12 @@ router.post('/createOrder', shopifyController.createOrder);
 router.post('/confirm-order', shopifyController.confirmOrder);
 
 // Cierre de caja - JSON con ventas del día
-router.get('/cierre-caja', shopifyController.cierreCaja);
+// Para obtener ventas en JSON y mostrarlas en el frontend
+router.get('/cierre-caja', shopifyController.obtenerVentasCierreCaja);
 
-// Cierre de caja - descargar Excel
-router.get('/cierre-caja/excel', shopifyController.obtenerVentasCierreCaja);
+// Para generar y descargar el Excel
+router.get('/cierre-caja/excel', shopifyController.cierreCaja);
+
 
 // Buscar productos
 router.get('/products/search', shopifyController.searchProducts);

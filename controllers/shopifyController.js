@@ -1,4 +1,6 @@
 const axios = require('axios');
+const dayjs = require('dayjs');
+
 
 // Obtener todos los productos
 const getProducts = async (req, res) => {
