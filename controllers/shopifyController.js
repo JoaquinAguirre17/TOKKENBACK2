@@ -180,8 +180,10 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    const fechaInicio = dayjs(`${fecha}T09:00:00Z`).toISOString();
-    const fechaFin = dayjs(`${fecha}T21:00:00Z`).toISOString();
+    // Filtrar solo por día completo (fecha ISO sin hora, Shopify query no admite directamente rango solo fecha)
+    // Usamos >= fechaT00:00:00 y < siguiente díaT00:00:00 para cubrir todo el día
+    const fechaInicio = dayjs(fecha).startOf('day').toISOString();
+    const fechaFin = dayjs(fecha).add(1, 'day').startOf('day').toISOString();
 
     const query = `
       query GetOrders($query: String!) {
@@ -202,7 +204,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     `;
 
     const variables = {
-      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<=${fechaFin}`,
+      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<${fechaFin}`,
     };
 
     const response = await axios.post(
@@ -239,95 +241,56 @@ const obtenerVentasCierreCaja = async (req, res) => {
   }
 };
 
+
 // Generar y descargar Excel para cierre de caja
 const cierreCaja = async (req, res) => {
   try {
-    const { fecha } = req.query;
-    if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
+    const fecha = req.query.fecha; // 'YYYY-MM-DD'
+    if (!fecha) {
+      return res.status(400).json({ error: 'Falta el parámetro fecha' });
+    }
 
-    const fechaInicio = dayjs(`${fecha}T09:00:00Z`).toISOString();
-    const fechaFin = dayjs(`${fecha}T21:00:00Z`).toISOString();
+    // Fechas para filtrar el día completo
+    const fechaInicio = new Date(`${fecha}T00:00:00Z`).toISOString();
+    const fechaFin = new Date(`${fecha}T23:59:59Z`).toISOString();
 
-    const query = `
-      query GetOrders($query: String!) {
-        orders(first: 100, query: $query) {
-          edges {
-            node {
-              name
-              createdAt
-              totalPriceSet { shopMoney { amount } }
-              tags
-              noteAttributes { name value }
-              financialStatus
-            }
-          }
-        }
-      }
-    `;
-
-    const variables = {
-      query: `tag:local financial_status:paid created_at:>=${fechaInicio} created_at:<=${fechaFin}`,
+    // Parámetros para Shopify order.list
+    const params = {
+      status: 'any',
+      limit: 250,
+      created_at_min: fechaInicio,
+      created_at_max: fechaFin,
+      financial_status: 'paid',
+      fields: 'id,name,created_at,total_price,tags,note_attributes,line_items'
     };
 
-    const response = await axios.post(
-      `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/graphql.json`,
-      { query, variables },
-      { headers: HEADERS }
-    );
+    // Suponiendo que tienes el cliente Shopify con método order.list
+    const orders = await shopify.order.list(params);
 
-    const orders = response.data.data.orders.edges.map(edge => edge.node);
+    if (!orders || orders.length === 0) {
+      return res.json({ message: 'No hay órdenes para la fecha indicada', orders: [] });
+    }
 
-    const ventas = orders.map(order => {
-      const vendedorAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'vendedor');
-      const medioAttr = order.noteAttributes.find(attr => attr.name.toLowerCase() === 'método de pago' || attr.name.toLowerCase() === 'medio_pago');
+    // Filtrar solo órdenes con tag 'local'
+    const ordersLocal = orders.filter(order => order.tags.includes('local'));
 
-      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
-      const comision = monto * 0.02;
+    // Procesar resumen para Excel
+    const resumen = ordersLocal.map(order => {
+      const vendedor = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'vendedor')?.value || 'Sin vendedor';
+      const medioPago = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'medio_pago' || attr.name.toLowerCase() === 'método de pago')?.value || 'No especificado';
+      const monto = parseFloat(order.total_price);
 
-      return {
-        orden: order.name,
-        fecha: dayjs(order.createdAt).format('YYYY-MM-DD'),
-        hora: dayjs(order.createdAt).format('HH:mm'),
-        vendedor: vendedorAttr?.value || 'N/A',
-        medioPago: medioAttr?.value || 'N/A',
-        monto,
-        comision: comision.toFixed(2),
-      };
+      return { id: order.id, nombre: order.name, vendedor, medioPago, monto };
     });
 
-    // Crear Excel con ExcelJS
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Cierre de Caja');
+    res.json({ fecha, totalOrdenes: ordersLocal.length, resumen });
 
-    sheet.columns = [
-      { header: 'Orden', key: 'orden', width: 20 },
-      { header: 'Fecha', key: 'fecha', width: 15 },
-      { header: 'Hora', key: 'hora', width: 10 },
-      { header: 'Vendedor', key: 'vendedor', width: 20 },
-      { header: 'Medio de Pago', key: 'medioPago', width: 20 },
-      { header: 'Monto', key: 'monto', width: 15 },
-      { header: 'Comisión (2%)', key: 'comision', width: 15 },
-    ];
-
-    ventas.forEach(v => {
-      sheet.addRow(v);
-    });
-
-    // Set header bold
-    sheet.getRow(1).font = { bold: true };
-
-    // Generar buffer Excel
-    const buffer = await workbook.xlsx.writeBuffer();
-
-    // Enviar archivo
-    res.setHeader('Content-Disposition', `attachment; filename="cierre_caja_${fecha}.xlsx"`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
   } catch (error) {
-    console.error('Error en cierre de caja:', error);
-    res.status(500).json({ error: 'Error al generar el reporte de cierre de caja' });
+    console.error('Error en cierreCaja:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
+
 
 module.exports = {
   getProducts,
