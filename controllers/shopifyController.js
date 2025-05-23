@@ -179,8 +179,8 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    const fechaInicio = dayjs(fecha).hour(9).minute(0).second(0);
-    const fechaFin = dayjs(fecha).hour(21).minute(0).second(0);
+    const fechaInicio = dayjs(fecha).hour(0).minute(0).second(0);
+    const fechaFin = dayjs(fecha).hour(23).minute(5).second(9);
 
     const query = `
       query GetOrders {
