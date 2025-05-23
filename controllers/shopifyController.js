@@ -238,7 +238,7 @@ const cierreCaja = async (req, res) => {
     };
 
     const response = await axios.post(
-      SHOPIFY_API_URL,
+      SHOPIFY_STORE_URL,
       { query, variables },
       { headers: HEADERS }
     );
@@ -315,7 +315,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     };
 
     const response = await axios.post(
-      SHOPIFY_API_URL,
+    SHOPIFY_STORE_URL,
       { query, variables },
       { headers: HEADERS }
     );
