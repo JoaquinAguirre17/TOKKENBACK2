@@ -260,14 +260,18 @@ const cierreCaja = async (req, res) => {
       return res.status(400).json({ error: 'Falta el parámetro fecha' });
     }
 
-    const fechaInicio = new Date(`${fecha}T00:00:00Z`).toISOString();
-    const fechaFin = new Date(`${fecha}T23:59:59Z`).toISOString();
+    const fechaInicio = new Date(`${fecha}T00:00:00Z`);
+    const fechaFin = new Date(`${fecha}T23:59:59Z`);
+
+    if (isNaN(fechaInicio) || isNaN(fechaFin)) {
+      return res.status(400).json({ error: 'Formato de fecha inválido' });
+    }
 
     const params = {
       status: 'any',
       limit: 250,
-      created_at_min: fechaInicio,
-      created_at_max: fechaFin,
+      created_at_min: fechaInicio.toISOString(),
+      created_at_max: fechaFin.toISOString(),
       financial_status: 'paid',
       fields: 'id,name,created_at,total_price,tags,note_attributes,line_items'
     };
@@ -282,24 +286,15 @@ const cierreCaja = async (req, res) => {
       return res.json({ message: 'No hay órdenes para la fecha indicada', orders: [] });
     }
 
-    // Filtrar solo las órdenes con tag 'local'
-    const ordersLocal = orders.filter(order => {
-      if (!order.tags) {
-        console.warn(`Orden ${order.id} sin tags`);
-        return false;
-      }
-      return order.tags.includes('local');
-    });
+    const ordersLocal = orders.filter(order => order.tags && order.tags.includes('local'));
 
     if (ordersLocal.length === 0) {
       return res.json({ message: 'No hay órdenes con tag "local" para la fecha indicada', orders: [] });
     }
 
-    // Crear el libro de Excel
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Ventas Cierre Caja');
 
-    // Definir columnas
     worksheet.columns = [
       { header: 'Orden', key: 'orden', width: 20 },
       { header: 'Fecha', key: 'fecha', width: 20 },
@@ -310,10 +305,11 @@ const cierreCaja = async (req, res) => {
       { header: 'Hora', key: 'hora', width: 10 },
     ];
 
-    // Rellenar datos
     ordersLocal.forEach(order => {
-      const vendedorAttr = order.note_attributes.find(attr => attr.name.toLowerCase() === 'vendedor');
-      const medioPagoAttr = order.note_attributes.find(attr => attr.name.toLowerCase() === 'método de pago' || attr.name.toLowerCase() === 'medio_pago');
+      const vendedorAttr = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'vendedor');
+      const medioPagoAttr = order.note_attributes?.find(attr =>
+        ['método de pago', 'medio_pago'].includes(attr.name.toLowerCase())
+      );
       const fechaOrder = dayjs(order.created_at).format('YYYY-MM-DD HH:mm');
       const horaOrder = dayjs(order.created_at).format('HH:mm');
       const monto = parseFloat(order.total_price);
@@ -330,17 +326,18 @@ const cierreCaja = async (req, res) => {
       });
     });
 
-    // Encabezados de respuesta para Excel
+    const buffer = await workbook.xlsx.writeBuffer();
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=cierre_caja_${fecha}.xlsx`);
+    res.send(buffer);
 
-    await workbook.xlsx.write(res);
-    res.end();
   } catch (error) {
     console.error('Error en cierre de caja:', error);
     res.status(500).json({ error: 'Error al generar el reporte de cierre de caja' });
   }
 };
+
 
 module.exports = {
   getProducts,
