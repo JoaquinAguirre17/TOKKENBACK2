@@ -187,8 +187,8 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    const fechaInicio = dayjs(fecha).hour(9).minute(0).second(0).toISOString(); // 9:00 AM
-    const fechaFin = dayjs(fecha).hour(21).minute(0).second(0).toISOString();  // 9:00 PM
+    const fechaInicio = dayjs(fecha).startOf('day');
+    const fechaFin = dayjs(fecha).add(1, 'day').startOf('day');
 
     const query = `
       query GetOrders($query: String!) {
@@ -231,7 +231,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
     `;
 
     const variables = {
-      query: `tag:local created_at:>=${fechaInicio} created_at:<${fechaFin}`,
+      query: "tag:local",
     };
 
     const response = await axios.post(
@@ -245,23 +245,37 @@ const obtenerVentasCierreCaja = async (req, res) => {
       return res.status(500).json({ error: 'Error en consulta GraphQL', details: response.data.errors });
     }
 
+    if (!response.data?.data?.orders) {
+      return res.status(500).json({ error: 'Datos inválidos recibidos de Shopify' });
+    }
+
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
-    const ventas = orders.map(order => {
-      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
-      const comision = monto * 0.02;
+    // Filtrar por hora en backend
+    const ventas = orders
+      .filter(order => {
+        const hora = dayjs(order.createdAt);
+        return hora.isAfter(fechaInicio.hour(8).minute(59)) && hora.isBefore(fechaFin.hour(21));
+      })
+      .map(order => {
+        const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+        const comision = monto * 0.02;
 
-      return {
-        id: order.id,
-        orden: order.name,
-        fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
-        hora: dayjs(order.createdAt).format('HH:mm'),
-        vendedor: extraerDatoDesdeNote(order.note, 'vendedor'),
-        medioPago: extraerDatoDesdeNote(order.note, 'medio_pago'),
-        monto,
-        comision: comision.toFixed(2),
-      };
-    });
+        // Extraemos vendedor y método de pago desde la nota (opcional)
+        const vendedor = extraerDatoDesdeNote(order.note, 'vendedor');
+        const medioPago = extraerDatoDesdeNote(order.note, 'medio_pago');
+
+        return {
+          id: order.id,
+          orden: order.name,
+          fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
+          hora: dayjs(order.createdAt).format('HH:mm'),
+          vendedor: vendedor || 'N/A',
+          medioPago: medioPago || 'N/A',
+          monto,
+          comision: comision.toFixed(2),
+        };
+      });
 
     res.json({ ventas });
   } catch (error) {
@@ -272,6 +286,16 @@ const obtenerVentasCierreCaja = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener ventas' });
   }
 };
+
+// Función auxiliar para extraer datos desde una nota (formato "clave: valor")
+function extraerDatoDesdeNote(note, clave) {
+  if (!note) return null;
+  const lineas = note.split('\n');
+  const linea = lineas.find(l => l.toLowerCase().startsWith(clave.toLowerCase()));
+  if (!linea) return null;
+  return linea.split(':')[1]?.trim() || null;
+}
+
 
 
 // Generar y descargar Excel para cierre de caja
