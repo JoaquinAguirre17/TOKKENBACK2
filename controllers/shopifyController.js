@@ -1,21 +1,25 @@
+// controllers/shopifyController.js
 const axios = require('axios');
 const dayjs = require('dayjs');
 const ExcelJS = require('exceljs');
-// IMPORTANTE: Necesitas configurar e inicializar el cliente de Shopify Admin API.
-// Aquí asumo que tienes una instancia llamada `shopify` que maneja esa conexión
-// Por ejemplo con @shopify/shopify-api o un cliente custom, esto debe estar definido antes o importado.
-const shopify = require('./shopifyClient'); // <-- Ajusta esto según tu configuración real
+
+const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL; // Ej: 'mi-tienda.myshopify.com'
+const ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+
+if (!SHOPIFY_STORE_URL || !ACCESS_TOKEN) {
+  throw new Error("Faltan las variables de entorno SHOPIFY_STORE_URL o SHOPIFY_ACCESS_TOKEN");
+}
 
 const HEADERS = {
-  'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+  'X-Shopify-Access-Token': ACCESS_TOKEN,
   'Content-Type': 'application/json',
 };
 
-// Obtener todos los productos
+// Obtener todos los productos (REST)
 const getProducts = async (req, res) => {
   try {
-    const response = await axios.get(`${process.env.SHOPIFY_STORE_URL}/products.json?limit=250`, {
-      headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
+    const response = await axios.get(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/products.json?limit=250`, {
+      headers: HEADERS,
     });
     res.status(200).json(response.data);
   } catch (error) {
@@ -28,8 +32,8 @@ const getProducts = async (req, res) => {
 const getProductDetails = async (req, res) => {
   const { id } = req.params;
   try {
-    const response = await axios.get(`${SHOPIFY_STORE_URL}/products/${id}.json`, {
-      headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
+    const response = await axios.get(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/products/${id}.json`, {
+      headers: HEADERS,
     });
     res.status(200).json(response.data);
   } catch (error) {
@@ -65,23 +69,14 @@ const createOrder = async (req, res) => {
     const draftOrderData = {
       draft_order: {
         line_items,
-        note: `Venta - Vendedor: ${vendedor}`,
+        note: `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPago} - Total: ${total} - Fecha: ${fecha || new Date().toISOString()}`,
         tags: Array.isArray(tags) ? tags.join(', ') : tags,
-        note_attributes: [
-          { name: 'Vendedor', value: vendedor },
-          { name: 'Método de pago', value: metodoPago },
-          { name: 'Total', value: total },
-          { name: 'Fecha', value: fecha ? new Date(fecha).toLocaleString() : new Date().toLocaleString() }
-        ]
       }
     };
 
     // Crear la orden borrador
-    const draftOrderResponse = await axios.post(`${SHOPIFY_STORE_URL}/draft_orders.json`, draftOrderData, {
-      headers: {
-        'X-Shopify-Access-Token': ACCESS_TOKEN,
-        'Content-Type': 'application/json',
-      },
+    const draftOrderResponse = await axios.post(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`, draftOrderData, {
+      headers: HEADERS,
     });
 
     const draftOrder = draftOrderResponse.data.draft_order;
@@ -90,14 +85,9 @@ const createOrder = async (req, res) => {
     // Si es venta local, completar la orden automáticamente
     if (isVentaLocal) {
       const completeResponse = await axios.put(
-        `${SHOPIFY_STORE_URL}/draft_orders/${draftOrder.id}/complete.json`,
+        `https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
         {},
-        {
-          headers: {
-            'X-Shopify-Access-Token': ACCESS_TOKEN,
-            'Content-Type': 'application/json',
-          },
-        }
+        { headers: HEADERS }
       );
 
       return res.status(201).json({
@@ -135,13 +125,13 @@ const confirmOrder = async (req, res) => {
 
   try {
     if (action === 'vendido') {
-      await axios.put(`${SHOPIFY_STORE_URL}/draft_orders/${draftOrderId}/complete.json`, {}, {
-        headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
+      await axios.put(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrderId}/complete.json`, {}, {
+        headers: HEADERS,
       });
       return res.status(200).json({ message: 'Orden confirmada y completada' });
     } else if (action === 'no-vendido') {
-      await axios.delete(`${SHOPIFY_STORE_URL}/draft_orders/${draftOrderId}.json`, {
-        headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
+      await axios.delete(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrderId}.json`, {
+        headers: HEADERS,
       });
       return res.status(200).json({ message: 'Orden cancelada' });
     } else {
@@ -160,8 +150,8 @@ const searchProducts = async (req, res) => {
     return res.status(400).json({ message: 'La consulta de búsqueda no puede estar vacía.' });
   }
   try {
-    const response = await axios.get(`${SHOPIFY_STORE_URL}/products.json`, {
-      headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN },
+    const response = await axios.get(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/products.json`, {
+      headers: HEADERS,
       params: { limit: 250 },
     });
     const allProducts = response.data.products;
@@ -177,8 +167,10 @@ const searchProducts = async (req, res) => {
 };
 
 function extraerDatoDesdeNote(note, campo) {
-  const match = new RegExp(`${campo}\\s*:\\s*([^;\\n]+)`, 'i').exec(note || '');
-  return match ? match[1].trim() : 'N/A';
+  // Extrae "campo: valor" dentro de note (insensible a mayúsculas)
+  const regex = new RegExp(`${campo}\\s*:\\s*([^\\-]+)`, 'i');
+  const match = regex.exec(note || '');
+  return match ? match[1].trim() : null;
 }
 
 // Obtener ventas para cierre de caja (GraphQL)
@@ -187,46 +179,33 @@ const obtenerVentasCierreCaja = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    const fechaInicio = dayjs(fecha).startOf('day');
-    const fechaFin = dayjs(fecha).add(1, 'day').startOf('day');
+    const fechaInicio = dayjs(fecha).hour(9).minute(0).second(0);
+    const fechaFin = dayjs(fecha).hour(21).minute(0).second(0);
 
     const query = `
       query GetOrders {
-  orders(first: 10, query: "tag:'local'") {
-    edges {
-      node {
-        id
-        name
-        tags
-        noteAttributes {
-          name
-          value
-        }
-        lineItems(first: 5) {
+        orders(first: 100, query: "tag:local status:closed created_at:>=${fechaInicio.toISOString()} created_at:<=${fechaFin.toISOString()}") {
           edges {
             node {
-              title
-              quantity
-              variant {
-                id
-                price
+              id
+              name
+              tags
+              note
+              totalPriceSet {
+                shopMoney {
+                  amount
+                }
               }
+              createdAt
             }
           }
         }
-        createdAt
       }
-    }
-  }
-}
     `;
-    const variables = {
-      query: "tag:local",
-    };
 
     const response = await axios.post(
-      `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01/graphql.json`,
-      { query, variables },
+      `https://${SHOPIFY_STORE_URL}/admin/api/2025-01/graphql.json`,
+      { query },
       { headers: HEADERS }
     );
 
@@ -241,139 +220,74 @@ const obtenerVentasCierreCaja = async (req, res) => {
 
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
-    // Filtrar por hora en backend
-    const ventas = orders
-      .filter(order => {
-        const hora = dayjs(order.createdAt);
-        return hora.isAfter(fechaInicio.hour(8).minute(59)) && hora.isBefore(fechaFin.hour(21));
-      })
-      .map(order => {
-        const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
-        const comision = monto * 0.02;
+    const ventas = orders.map(order => {
+      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+      const comision = monto * 0.02;
 
-        // Extraemos vendedor y método de pago desde la nota (opcional)
-        const vendedor = extraerDatoDesdeNote(order.note, 'vendedor');
-        const medioPago = extraerDatoDesdeNote(order.note, 'medio_pago');
+      const vendedor = extraerDatoDesdeNote(order.note, 'Vendedor') || 'No especificado';
+      const metodoPago = extraerDatoDesdeNote(order.note, 'Método de pago') || 'No especificado';
 
-        return {
-          id: order.id,
-          orden: order.name,
-          fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
-          hora: dayjs(order.createdAt).format('HH:mm'),
-          vendedor: vendedor || 'N/A',
-          medioPago: medioPago || 'N/A',
-          monto,
-          comision: comision.toFixed(2),
-        };
-      });
+      return {
+        id: order.id,
+        nombre: order.name,
+        monto,
+        comision,
+        vendedor,
+        metodoPago,
+        fecha: order.createdAt,
+      };
+    });
 
-    res.json({ ventas });
+    res.status(200).json(ventas);
   } catch (error) {
-    console.error('Error al obtener ventas para cierre de caja:', error);
-    if (error.response) {
-      console.error('Respuesta de error:', error.response.data);
-    }
-    res.status(500).json({ error: 'Error al obtener ventas' });
+    console.error('Error al obtener ventas para cierre de caja:', error.response?.data || error.message || error);
+    res.status(500).json({ error: 'Error al obtener ventas', message: error.message || error.toString() });
   }
 };
 
-// Función auxiliar para extraer datos desde una nota (formato "clave: valor")
-function extraerDatoDesdeNote(note, clave) {
-  if (!note) return null;
-  const lineas = note.split('\n');
-  const linea = lineas.find(l => l.toLowerCase().startsWith(clave.toLowerCase()));
-  if (!linea) return null;
-  return linea.split(':')[1]?.trim() || null;
-}
+// Exportar ventas a Excel
+const exportarVentasExcel = async (req, res) => {
+  const { ventas } = req.body;
+  if (!ventas || !Array.isArray(ventas) || ventas.length === 0) {
+    return res.status(400).json({ message: 'No hay ventas para exportar' });
+  }
 
-
-
-// Generar y descargar Excel para cierre de caja
-const cierreCaja = async (req, res) => {
   try {
-    const fecha = req.query.fecha;
-    if (!fecha) {
-      return res.status(400).json({ error: 'Falta el parámetro fecha' });
-    }
-
-    const fechaInicio = new Date(`${fecha}T00:00:00Z`);
-    const fechaFin = new Date(`${fecha}T23:59:59Z`);
-
-    if (isNaN(fechaInicio) || isNaN(fechaFin)) {
-      return res.status(400).json({ error: 'Formato de fecha inválido' });
-    }
-
-    const params = {
-      status: 'any',
-      limit: 250,
-      created_at_min: fechaInicio.toISOString(),
-      created_at_max: fechaFin.toISOString(),
-      financial_status: 'paid',
-      fields: 'id,name,created_at,total_price,tags,note_attributes,line_items'
-    };
-
-    console.log('Parámetros para shopify.order.list:', params);
-
-    const orders = await shopify.order.list(params);
-
-    console.log('Órdenes recibidas:', orders.length);
-
-    if (!orders || orders.length === 0) {
-      return res.json({ message: 'No hay órdenes para la fecha indicada', orders: [] });
-    }
-
-    const ordersLocal = orders.filter(order => order.tags && order.tags.includes('local'));
-
-    if (ordersLocal.length === 0) {
-      return res.json({ message: 'No hay órdenes con tag "local" para la fecha indicada', orders: [] });
-    }
-
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Ventas Cierre Caja');
+    const sheet = workbook.addWorksheet('Ventas');
 
-    worksheet.columns = [
-      { header: 'Orden', key: 'orden', width: 20 },
-      { header: 'Fecha', key: 'fecha', width: 20 },
-      { header: 'Vendedor', key: 'vendedor', width: 20 },
-      { header: 'Medio de pago', key: 'medio_pago', width: 20 },
+    sheet.columns = [
+      { header: 'ID Orden', key: 'id', width: 30 },
+      { header: 'Nombre', key: 'nombre', width: 20 },
       { header: 'Monto', key: 'monto', width: 15 },
       { header: 'Comisión (2%)', key: 'comision', width: 15 },
-      { header: 'Hora', key: 'hora', width: 10 },
+      { header: 'Vendedor', key: 'vendedor', width: 20 },
+      { header: 'Método de Pago', key: 'metodoPago', width: 20 },
+      { header: 'Fecha', key: 'fecha', width: 25 },
     ];
 
-    ordersLocal.forEach(order => {
-      const vendedorAttr = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'vendedor');
-      const medioPagoAttr = order.note_attributes?.find(attr =>
-        ['método de pago', 'medio_pago'].includes(attr.name.toLowerCase())
-      );
-      const fechaOrder = dayjs(order.created_at).format('YYYY-MM-DD HH:mm');
-      const horaOrder = dayjs(order.created_at).format('HH:mm');
-      const monto = parseFloat(order.total_price);
-      const comision = monto * 0.02;
-
-      worksheet.addRow({
-        orden: order.name,
-        fecha: fechaOrder,
-        vendedor: vendedorAttr?.value || 'N/A',
-        medio_pago: medioPagoAttr?.value || 'N/A',
-        monto: monto.toFixed(2),
-        comision: comision.toFixed(2),
-        hora: horaOrder
+    ventas.forEach(v => {
+      sheet.addRow({
+        id: v.id,
+        nombre: v.nombre,
+        monto: v.monto,
+        comision: v.comision,
+        vendedor: v.vendedor,
+        metodoPago: v.metodoPago,
+        fecha: v.fecha,
       });
     });
 
-    const buffer = await workbook.xlsx.writeBuffer();
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=cierre_caja_${fecha}.xlsx`);
-    res.send(buffer);
+    res.setHeader('Content-Disposition', `attachment; filename=ventas_${dayjs().format('YYYY-MM-DD_HH-mm-ss')}.xlsx`);
 
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
-    console.error('Error en cierre-caja:', error);
-    res.status(500).json({ error: 'Error interno en cierre caja' });
+    console.error('Error al exportar Excel:', error);
+    res.status(500).json({ message: 'Error al exportar Excel', error: error.message || error });
   }
 };
-
 
 module.exports = {
   getProducts,
@@ -382,5 +296,5 @@ module.exports = {
   confirmOrder,
   searchProducts,
   obtenerVentasCierreCaja,
-  cierreCaja,
+  exportarVentasExcel,
 };
