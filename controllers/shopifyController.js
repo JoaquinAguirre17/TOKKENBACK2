@@ -1,6 +1,10 @@
 const axios = require('axios');
 const dayjs = require('dayjs');
 const ExcelJS = require('exceljs');
+// IMPORTANTE: Necesitas configurar e inicializar el cliente de Shopify Admin API.
+// Aquí asumo que tienes una instancia llamada `shopify` que maneja esa conexión
+// Por ejemplo con @shopify/shopify-api o un cliente custom, esto debe estar definido antes o importado.
+const shopify = require('./shopifyClient'); // <-- Ajusta esto según tu configuración real
 
 const SHOPIFY_STORE_URL = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01`;
 const ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
@@ -278,7 +282,7 @@ const cierreCaja = async (req, res) => {
       return res.json({ message: 'No hay órdenes para la fecha indicada', orders: [] });
     }
 
-    // Protección si tags o note_attributes vienen undefined
+    // Filtrar solo las órdenes con tag 'local'
     const ordersLocal = orders.filter(order => {
       if (!order.tags) {
         console.warn(`Orden ${order.id} sin tags`);
@@ -287,34 +291,56 @@ const cierreCaja = async (req, res) => {
       return order.tags.includes('local');
     });
 
-    console.log('Órdenes con tag local:', ordersLocal.length);
-
-    const resumen = ordersLocal.map(order => {
-      const vendedor = order.note_attributes?.find(attr => attr.name.toLowerCase() === 'vendedor')?.value || 'Sin vendedor';
-      const medioPago = order.note_attributes?.find(attr => {
-        const nameLower = attr.name.toLowerCase();
-        return nameLower === 'medio_pago' || nameLower === 'método de pago';
-      })?.value || 'No especificado';
-
-      const monto = parseFloat(order.total_price);
-
-      return { id: order.id, nombre: order.name, vendedor, medioPago, monto };
-    });
-
-    res.json({ fecha, totalOrdenes: ordersLocal.length, resumen });
-
-  } catch (error) {
-    console.error('Error en cierreCaja:', error);
-
-    if (error.response) {
-      console.error('Respuesta de error de Shopify:', error.response.data);
+    if (ordersLocal.length === 0) {
+      return res.json({ message: 'No hay órdenes con tag "local" para la fecha indicada', orders: [] });
     }
 
-    res.status(500).json({ error: 'Error interno del servidor' });
+    // Crear el libro de Excel
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Ventas Cierre Caja');
+
+    // Definir columnas
+    worksheet.columns = [
+      { header: 'Orden', key: 'orden', width: 20 },
+      { header: 'Fecha', key: 'fecha', width: 20 },
+      { header: 'Vendedor', key: 'vendedor', width: 20 },
+      { header: 'Medio de pago', key: 'medio_pago', width: 20 },
+      { header: 'Monto', key: 'monto', width: 15 },
+      { header: 'Comisión (2%)', key: 'comision', width: 15 },
+      { header: 'Hora', key: 'hora', width: 10 },
+    ];
+
+    // Rellenar datos
+    ordersLocal.forEach(order => {
+      const vendedorAttr = order.note_attributes.find(attr => attr.name.toLowerCase() === 'vendedor');
+      const medioPagoAttr = order.note_attributes.find(attr => attr.name.toLowerCase() === 'método de pago' || attr.name.toLowerCase() === 'medio_pago');
+      const fechaOrder = dayjs(order.created_at).format('YYYY-MM-DD HH:mm');
+      const horaOrder = dayjs(order.created_at).format('HH:mm');
+      const monto = parseFloat(order.total_price);
+      const comision = monto * 0.02;
+
+      worksheet.addRow({
+        orden: order.name,
+        fecha: fechaOrder,
+        vendedor: vendedorAttr?.value || 'N/A',
+        medio_pago: medioPagoAttr?.value || 'N/A',
+        monto: monto.toFixed(2),
+        comision: comision.toFixed(2),
+        hora: horaOrder
+      });
+    });
+
+    // Encabezados de respuesta para Excel
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=cierre_caja_${fecha}.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error en cierre de caja:', error);
+    res.status(500).json({ error: 'Error al generar el reporte de cierre de caja' });
   }
 };
-
-
 
 module.exports = {
   getProducts,

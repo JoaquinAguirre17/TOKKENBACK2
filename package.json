@@ -11,10 +11,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.8.4",
+    "@shopify/shopify-api": "^11.12.0",
+    "axios": "^1.9.0",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.5.0",
     "exceljs": "^4.4.0",
     "express": "^4.21.2"
   }
