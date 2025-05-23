@@ -6,10 +6,8 @@ const ExcelJS = require('exceljs');
 // Por ejemplo con @shopify/shopify-api o un cliente custom, esto debe estar definido antes o importado.
 const shopify = require('./shopifyClient'); // <-- Ajusta esto según tu configuración real
 
-const SHOPIFY_STORE_URL = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2025-01`;
-const ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const HEADERS = {
-  'X-Shopify-Access-Token': ACCESS_TOKEN,
+  'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
   'Content-Type': 'application/json',
 };
 
@@ -178,58 +176,62 @@ const searchProducts = async (req, res) => {
   }
 };
 
+function extraerDatoDesdeNote(note, campo) {
+  const match = new RegExp(`${campo}\\s*:\\s*([^;\\n]+)`, 'i').exec(note || '');
+  return match ? match[1].trim() : 'N/A';
+}
+
 // Obtener ventas para cierre de caja (GraphQL)
 const obtenerVentasCierreCaja = async (req, res) => {
   try {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta el parámetro fecha' });
 
-    const fechaInicio = dayjs(fecha).startOf('day').toISOString();
-    const fechaFin = dayjs(fecha).add(1, 'day').startOf('day').toISOString();
+    const fechaInicio = dayjs(fecha).hour(9).minute(0).second(0).toISOString(); // 9:00 AM
+    const fechaFin = dayjs(fecha).hour(21).minute(0).second(0).toISOString();  // 9:00 PM
 
     const query = `
-  query GetOrders($query: String!) {
-    orders(first: 100, query: $query) {
-      edges {
-        node {
-          id
-          name
-          createdAt
-          totalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          tags
-          note
-          transactions(first: 5) {
-            edges {
-              node {
-                id
-                status
-                amount {
+      query GetOrders($query: String!) {
+        orders(first: 100, query: $query) {
+          edges {
+            node {
+              id
+              name
+              createdAt
+              totalPriceSet {
+                shopMoney {
                   amount
                   currencyCode
                 }
-                kind
-                processedAt
+              }
+              tags
+              note
+              transactions(first: 5) {
+                edges {
+                  node {
+                    id
+                    status
+                    amount {
+                      amount
+                      currencyCode
+                    }
+                    kind
+                    processedAt
+                  }
+                }
+              }
+              customer {
+                displayName
+                email
               }
             }
           }
-          customer {
-            displayName
-            email
-          }
         }
       }
-    }
-  }
-`;
-
+    `;
 
     const variables = {
-      query: `tag:local created_at:>=${fechaInicio} created_at:<${fechaFin}`
+      query: `tag:local created_at:>=${fechaInicio} created_at:<${fechaFin}`,
     };
 
     const response = await axios.post(
@@ -239,58 +241,37 @@ const obtenerVentasCierreCaja = async (req, res) => {
     );
 
     if (response.data.errors) {
+      console.error('Errores GraphQL:', response.data.errors);
       return res.status(500).json({ error: 'Error en consulta GraphQL', details: response.data.errors });
     }
 
     const orders = response.data.data.orders.edges.map(edge => edge.node);
 
-    const parseNote = (note) => {
-      if (!note) return {};
-      const parts = note.split(';').map(p => p.trim());
-      const data = {};
-      parts.forEach(part => {
-        const [key, value] = part.split(':').map(s => s.trim().toLowerCase());
-        if (key && value) data[key] = value;
-      });
-      return data;
-    };
+    const ventas = orders.map(order => {
+      const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
+      const comision = monto * 0.02;
 
-    const ventas = orders
-      .filter(order =>
-        order.transactions.edges.some(tx => tx.node.status === "SUCCESS" || tx.node.status === "AUTHORIZED")
-      )
-      .map(order => {
-        const noteData = parseNote(order.note);
-        const vendedor = noteData['vendedor'] || 'N/A';
-        const medioPago = noteData['medio_pago'] || noteData['método de pago'] || 'N/A';
-
-        const monto = parseFloat(order.totalPriceSet.shopMoney.amount);
-        const comision = monto * 0.02;
-
-        return {
-          id: order.id,
-          orden: order.name,
-          fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
-          vendedor,
-          medioPago,
-          monto,
-          comision: comision.toFixed(2),
-          hora: dayjs(order.createdAt).format('HH:mm'),
-        };
-      });
+      return {
+        id: order.id,
+        orden: order.name,
+        fecha: dayjs(order.createdAt).format('YYYY-MM-DD HH:mm'),
+        hora: dayjs(order.createdAt).format('HH:mm'),
+        vendedor: extraerDatoDesdeNote(order.note, 'vendedor'),
+        medioPago: extraerDatoDesdeNote(order.note, 'medio_pago'),
+        monto,
+        comision: comision.toFixed(2),
+      };
+    });
 
     res.json({ ventas });
   } catch (error) {
     console.error('Error al obtener ventas para cierre de caja:', error);
-
     if (error.response) {
       console.error('Respuesta de error:', error.response.data);
     }
-
     res.status(500).json({ error: 'Error al obtener ventas' });
   }
 };
-
 
 
 // Generar y descargar Excel para cierre de caja
