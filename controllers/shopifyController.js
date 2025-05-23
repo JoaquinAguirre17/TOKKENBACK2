@@ -188,7 +188,7 @@ const obtenerVentasCierreCaja = async (req, res) => {
 
     const query = `
       query GetOrders {
-        orders(first: 100, query: "tag:local status:closed created_at:>=${fechaInicio.toISOString()} created_at:<=${fechaFin.toISOString()}") {
+        orders(first: 100, query: "tag:local status:Unfulfilled created_at:>=${fechaInicio.toISOString()} created_at:<=${fechaFin.toISOString()}") {
           edges {
             node {
               id
