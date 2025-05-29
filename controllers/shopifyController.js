@@ -45,7 +45,8 @@ const getProductDetails = async (req, res) => {
 const createOrder = async (req, res) => {
   const { productos, metodoPago, vendedor, total, tags = [], fecha, descuentoPorcentaje } = req.body;
 
-  const redondear1000 = (valor) => Math.round(valor / 1000) * 1000;
+  // Redondear hacia abajo a múltiplos de 100
+  const redondear100Abajo = (valor) => Math.floor(valor / 100) * 100;
 
   try {
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
@@ -64,10 +65,10 @@ const createOrder = async (req, res) => {
       }
 
       const precioOriginal = p.precio || p.price;
-      const precioRedondeado = redondear1000(precioOriginal);
+      const precioRedondeado = redondear100Abajo(precioOriginal);
 
-      // Calculamos descuento en valor fijo (pesos)
-      const descuentoValor = porcentaje > 0 ? redondear1000(precioOriginal * (porcentaje / 100)) : 0;
+      // Calculamos descuento en valor fijo (pesos) y redondeamos hacia abajo
+      const descuentoValor = porcentaje > 0 ? redondear100Abajo(precioOriginal * (porcentaje / 100)) : 0;
 
       const item = {
         variant_id: Number(p.variant_id),
@@ -133,6 +134,7 @@ const createOrder = async (req, res) => {
     });
   }
 };
+
 
 
 // Confirmar o cancelar orden
