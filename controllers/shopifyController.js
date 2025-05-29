@@ -43,7 +43,7 @@ const getProductDetails = async (req, res) => {
 };
 
 const createOrder = async (req, res) => {
-  const { productos, metodoPago, vendedor, total, tags = [], fecha } = req.body;
+  const { productos, metodoPago, vendedor, total, tags = [], fecha, descuentoPorcentaje } = req.body;
 
   const redondear1000 = (valor) => Math.round(valor / 1000) * 1000;
 
@@ -55,13 +55,19 @@ const createOrder = async (req, res) => {
       return res.status(400).json({ message: 'Faltan datos obligatorios: metodoPago, vendedor o total.' });
     }
 
+    // Aseguramos que descuentoPorcentaje es válido o 0 si no existe
+    const porcentaje = descuentoPorcentaje && !isNaN(descuentoPorcentaje) ? Number(descuentoPorcentaje) : 0;
+
     const line_items = productos.map(p => {
       if (!p.variant_id) {
         throw new Error(`Producto sin variant_id válido: ${p.title}`);
       }
 
-      const precioRedondeado = redondear1000(p.precio || p.price);
-      const descuentoRedondeado = p.descuento ? redondear1000(p.descuento) : 0;
+      const precioOriginal = p.precio || p.price;
+      const precioRedondeado = redondear1000(precioOriginal);
+
+      // Calculamos descuento en valor fijo (pesos)
+      const descuentoValor = porcentaje > 0 ? redondear1000(precioOriginal * (porcentaje / 100)) : 0;
 
       const item = {
         variant_id: Number(p.variant_id),
@@ -70,12 +76,12 @@ const createOrder = async (req, res) => {
         title: p.title
       };
 
-      if (descuentoRedondeado > 0) {
+      if (descuentoValor > 0) {
         item.applied_discount = {
           value_type: "fixed_amount",
-          value: descuentoRedondeado,
-          amount: descuentoRedondeado,
-          description: "Descuento manual"
+          value: descuentoValor,
+          amount: descuentoValor,
+          description: `Descuento manual ${porcentaje}%`
         };
       }
 
