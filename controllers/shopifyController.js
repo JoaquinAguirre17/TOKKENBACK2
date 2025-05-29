@@ -42,9 +42,10 @@ const getProductDetails = async (req, res) => {
   }
 };
 
-// Crear orden (draft order y completar si es venta local)
 const createOrder = async (req, res) => {
   const { productos, metodoPago, vendedor, total, tags = [], fecha } = req.body;
+
+  const redondear1000 = (valor) => Math.round(valor / 1000) * 1000;
 
   try {
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
@@ -58,12 +59,27 @@ const createOrder = async (req, res) => {
       if (!p.variant_id) {
         throw new Error(`Producto sin variant_id válido: ${p.title}`);
       }
-      return {
+
+      const precioRedondeado = redondear1000(p.precio || p.price);
+      const descuentoRedondeado = p.descuento ? redondear1000(p.descuento) : 0;
+
+      const item = {
         variant_id: Number(p.variant_id),
         quantity: p.cantidad || p.quantity || 1,
-        price: p.precio || p.price,
+        price: precioRedondeado,
         title: p.title
       };
+
+      if (descuentoRedondeado > 0) {
+        item.applied_discount = {
+          value_type: "fixed_amount",
+          value: descuentoRedondeado,
+          amount: descuentoRedondeado,
+          description: "Descuento manual"
+        };
+      }
+
+      return item;
     });
 
     const draftOrderData = {
@@ -74,7 +90,6 @@ const createOrder = async (req, res) => {
       }
     };
 
-    // Crear la orden borrador
     const draftOrderResponse = await axios.post(`https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders.json`, draftOrderData, {
       headers: HEADERS,
     });
@@ -82,7 +97,6 @@ const createOrder = async (req, res) => {
     const draftOrder = draftOrderResponse.data.draft_order;
     const isVentaLocal = Array.isArray(tags) ? tags.includes('local') : tags.toString().includes('local');
 
-    // Si es venta local, completar la orden automáticamente
     if (isVentaLocal) {
       const completeResponse = await axios.put(
         `https://${SHOPIFY_STORE_URL}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
@@ -96,7 +110,6 @@ const createOrder = async (req, res) => {
       });
     }
 
-    // Venta web: devolver la draft order
     const staff_control_url = `https://tokkencba.com/orden-control/${draftOrder.id}`;
 
     return res.status(201).json({
@@ -114,6 +127,7 @@ const createOrder = async (req, res) => {
     });
   }
 };
+
 
 // Confirmar o cancelar orden
 const confirmOrder = async (req, res) => {
