@@ -1,27 +1,22 @@
-// app.js
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const productRoutes = require('./routes/shopifyRoutes');
-const graphQLRoutes = require('./routes/graphQLRoutes');
+import express from "express";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import productRoutes from "./routes/mongoRoutes.js";
 
+dotenv.config();
 const app = express();
-const port = process.env.PORT || 5000;
 
-// Middleware
+// Middleware para leer JSON
 app.use(express.json());
 
-// Configurar CORS para permitir GET y POST
-app.use(cors({
-    origin: 'https://tokkencba.com',  // Cambiar si el dominio cambia
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// Conexión a Mongo Atlas
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ Conectado a MongoDB Atlas"))
+  .catch(err => console.error("❌ Error de conexión:", err));
 
 // Rutas
-app.use('/api/shopify', productRoutes);
-app.use('/api/shopify/graphql', graphQLRoutes);
-// Iniciar el servidor
-app.listen(port, () => {
-    console.log(`Servidor Shopify corriendo en http://localhost:${port}`);
-});
+app.use("/api/products", productRoutes);
+
+// Servidor
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Servidor en http://localhost:${PORT}`));
