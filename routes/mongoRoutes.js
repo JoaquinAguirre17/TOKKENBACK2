@@ -9,8 +9,9 @@ import {
 
 const router = express.Router();
 
+// ⚠️ IMPORTANTE: rutas relativas (SIN /api ni /products aquí)
+router.get("/", getProducts);
 router.post("/", createProduct);
-router.get("/Mongoproducts", getProducts);
 router.get("/:id", getProductById);
 router.put("/:id", updateProduct);
 router.delete("/:id", deleteProduct);
