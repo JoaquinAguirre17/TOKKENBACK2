@@ -43,6 +43,6 @@ const { MONGO_URI, PORT = 10000 } = process.env;
     });
   } catch (err) {
     console.error("❌ Error de conexión:", err?.message || err);
-    //l Opcional: process.exit(1); en Render se rgeintenta san
+    //l Opcional: process.exit(1); en Render gse rgeintenta san
   }
 })();
