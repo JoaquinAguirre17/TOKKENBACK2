@@ -32,7 +32,7 @@ console.log('MONGO_URI (masked):', (MONGO_URI || '').replace(/:(.*?)@/,'://***@'
 
     // Conectar ANTES de montar rutas y de escuchar puerto
     await mongoose.connect(MONGO_URI, {
-      dbName: 'tokkenDB',               // ✅ fuerza la DB (evita auth contra 'test')
+      dbName: 'Tokken',               // ✅ fuerza la DB (evita auth contra 'test')
       serverSelectionTimeoutMS: 20000,
       socketTimeoutMS: 45000,
       retryWrites: true,
