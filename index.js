@@ -23,19 +23,23 @@ app.get("/health", (_,res)=>res.send("ok"));
 
 const { MONGO_URI, PORT = 10000 } = process.env;
 
+// Log seguro para verificar que llega la URI (sin exponer password)
+console.log('MONGO_URI (masked):', (MONGO_URI || '').replace(/:(.*?)@/,'://***@'));
+
 (async () => {
   try {
     if (!MONGO_URI) throw new Error("MONGO_URI no está definida en Render");
 
-    // 👇 Conectar ANTES de montar rutas y de escuchar puerto
+    // Conectar ANTES de montar rutas y de escuchar puerto
     await mongoose.connect(MONGO_URI, {
+      dbName: 'tokkenDB',               // ✅ fuerza la DB (evita auth contra 'test')
       serverSelectionTimeoutMS: 20000,
       socketTimeoutMS: 45000,
       retryWrites: true,
     });
     console.log("✅ Conectado a MongoDB Atlas");
 
-    // 👇 Montar rutas después de conectar
+    // Rutas después de conectar
     app.use("/api/products", productRoutes);
 
     app.listen(PORT, () => {
@@ -43,6 +47,12 @@ const { MONGO_URI, PORT = 10000 } = process.env;
     });
   } catch (err) {
     console.error("❌ Error de conexión:", err?.message || err);
-    //l Opcional: process.exit(1); en Render gse rgeintenta san
+    process.exit(1); // ✅ fallar rápido: Render reintenta
   }
 })();
+
+// (Opcional) manejar rechazos no capturados para no quedar colgado
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+  process.exit(1);
+});
