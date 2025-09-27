@@ -4,6 +4,7 @@ const productSchema = new mongoose.Schema({
   sku: { type: String, required: true, unique: true },
   title: { type: String, required: true },
   description: String,
+  brand: String,
   category: String,
   tags: [String],
   pricing: {
@@ -17,4 +18,5 @@ const productSchema = new mongoose.Schema({
   status: { type: String, enum: ["active","draft","archived"], default: "active" }
 }, { timestamps: true });
 
-export default mongoose.model("Product", productSchema);
+// 👇 Forzamos a usar la colección 'products'
+export default mongoose.model("Product", productSchema, "products");
