@@ -1,5 +1,5 @@
 import Product from "../Models/Product.js";
-
+import { generateSKU } from "../GeneradorSku/skuGenerator.js";
 export const getProducts = async (req, res) => {
   try {
     const items = await Product.find().lean();
@@ -24,12 +24,20 @@ export const getProductById = async (req, res) => {
 
 export const createProduct = async (req, res) => {
   try {
-    const created = await Product.create(req.body);
+    let body = req.body;
+
+    // Si no viene un SKU, lo generamos
+    if (!body.sku) {
+      body.sku = generateSKU(body.title, body.brand);
+    }
+
+    const created = await Product.create(body);
     res.status(201).json(created);
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 };
+
 
 export const updateProduct = async (req, res) => {
   try {
