@@ -74,25 +74,27 @@ export const getProductBySlug = async (req, res) => {
   }
 };
 
+// controllers/appController.js
 export const searchProducts = async (req, res) => {
   const { query } = req.query;
-  if (!query || !query.trim()) {
-    return res.status(400).json({ message: "La consulta de búsqueda no puede estar vacía." });
+  if (!query || query.trim() === "") {
+    return res.status(400).json({ message: 'La consulta de búsqueda no puede estar vacía.' });
   }
+
   try {
-    const regex = new RegExp(query.trim(), "i");
-    const items = await Product.find({
-      $or: [{ title: regex }, { sku: regex }, { brand: regex }]
-    })
+    const regex = new RegExp(query, "i"); // búsqueda case-insensitive
+    const productos = await Product.find({ title: regex })
+      .select("title pricing images _id") // solo los campos necesarios
       .limit(10)
       .lean();
 
-    if (!items.length) return res.status(404).json({ message: "Sin resultados" });
-    res.json(items);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.json(productos); // devuelve un array plano
+  } catch (error) {
+    console.error("Error al buscar productos:", error);
+    res.status(500).json({ message: "Error al buscar productos", error: error.message });
   }
 };
+
 
 export const createProduct = async (req, res) => {
   try {
