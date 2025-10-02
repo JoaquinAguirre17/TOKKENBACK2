@@ -74,26 +74,24 @@ export const getProductBySlug = async (req, res) => {
   }
 };
 
-// controllers/appController.js
+// controllers/... (el que estés usando)
 export const searchProducts = async (req, res) => {
   const { query } = req.query;
-  if (!query || query.trim() === "") {
-    return res.status(400).json({ message: 'La consulta de búsqueda no puede estar vacía.' });
+  if (!query || !query.trim()) {
+    return res.status(400).json({ message: "La consulta de búsqueda no puede estar vacía." });
   }
-
   try {
-    const regex = new RegExp(query, "i"); // búsqueda case-insensitive
-    const productos = await Product.find({ title: regex })
-      .select("title pricing images _id") // solo los campos necesarios
+    const r = new RegExp(query.trim(), "i");
+    const items = await Product.find({ $or: [{ title: r }, { sku: r }, { brand: r }] })
+      .select("title pricing images _id")   // solo lo necesario
       .limit(10)
       .lean();
-
-    res.json(productos); // devuelve un array plano
-  } catch (error) {
-    console.error("Error al buscar productos:", error);
-    res.status(500).json({ message: "Error al buscar productos", error: error.message });
+    res.json(items); // 👈 array directo
+  } catch (e) {
+    res.status(500).json({ message: "Error al buscar productos", error: e.message });
   }
 };
+
 
 
 export const createProduct = async (req, res) => {
