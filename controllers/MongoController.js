@@ -2,6 +2,7 @@
 import dayjs from "dayjs";
 import ExcelJS from "exceljs";
 import mongoose from "mongoose";
+import PDFDocument from "pdfkit";
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
@@ -297,21 +298,19 @@ export const listOrders = async (req, res) => {
   }
 };
 
-export const getOrderById = async (req, res) => {
-  try {
-    const item = await Order.findById(req.params.id).lean();
-    if (!item) return res.status(404).json({ error: "Orden no encontrada" });
-    res.json(item);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-};
 
-// ---------- Reportes ----------
+
+
+
+// ------------------------------------------------------
+// 1) OBTENER VENTAS PARA CIERRE DE CAJA
+// ------------------------------------------------------
 export const obtenerVentasCierreCaja = async (req, res) => {
   try {
     const { fecha } = req.query;
-    if (!fecha) return res.status(400).json({ error: "Falta el parámetro fecha" });
+    if (!fecha) {
+      return res.status(400).json({ error: "Falta el parámetro fecha" });
+    }
 
     const inicio = dayjs(fecha).startOf("day").toDate();
     const fin = dayjs(fecha).endOf("day").toDate();
@@ -325,67 +324,257 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const ventas = orders.map((o) => {
       const monto = Number(o?.totals?.grand || 0);
       const comision = monto * 0.02;
-      const vendedor = o?.createdBy || o?.customer?.name || "No especificado";
-      const medioPago = o?.payment?.method || "No especificado";
+
       return {
         id: String(o._id),
         nombre: o.orderNumber || "Sin número",
         monto,
         comision,
-        vendedor,
-        medioPago,
-        hora: dayjs(o.createdAt).format("HH:mm"),
+        vendedor: o?.createdBy || o?.customer?.name || "No especificado",
+        metodoPago: o?.payment?.method || "No especificado",
+        fecha: dayjs(o.createdAt).format("YYYY-MM-DD HH:mm"),
       };
     });
 
     res.json({ ventas });
   } catch (e) {
-    res.status(500).json({ error: "Error al obtener ventas", message: e.message || e.toString() });
+    res.status(500).json({
+      error: "Error al obtener ventas",
+      message: e.message || e.toString(),
+    });
   }
 };
 
+// ------------------------------------------------------
+// 2) EXPORTAR VENTAS A EXCEL (DISEÑO PROFESIONAL)
+// ------------------------------------------------------
 export const exportarVentasExcel = async (req, res) => {
   const { ventas } = req.body;
-  if (!ventas?.length) return res.status(400).json({ message: "No hay ventas para exportar" });
+  if (!ventas?.length) {
+    return res.status(400).json({ message: "No hay ventas para exportar" });
+  }
 
   try {
     const wb = new ExcelJS.Workbook();
     const sheet = wb.addWorksheet("Ventas");
 
+    // ------------------------------
+    // ENCABEZADO PROFESIONAL
+    // ------------------------------
+    const headerFill = {
+      type: "gradient",
+      gradient: "angle",
+      degree: 0,
+      stops: [
+        { position: 0, color: { argb: "FF0A4F70" } }, // azul oscuro
+        { position: 1, color: { argb: "FF147AA8" } }, // azul claro
+      ],
+    };
+
     sheet.columns = [
       { header: "ID Orden", key: "id", width: 30 },
       { header: "Nombre", key: "nombre", width: 20 },
-      { header: "Monto", key: "monto", width: 15 },
+      { header: "Monto ($)", key: "monto", width: 15 },
       { header: "Comisión (2%)", key: "comision", width: 18 },
       { header: "Vendedor", key: "vendedor", width: 20 },
       { header: "Método de Pago", key: "metodoPago", width: 20 },
       { header: "Fecha/Hora", key: "fecha", width: 22 },
     ];
 
-    ventas.forEach((v) => {
-      sheet.addRow({
-        id: v.id,
-        nombre: v.nombre,
-        monto: v.monto,
-        comision: v.comision,
-        vendedor: v.vendedor,
-        metodoPago: v.metodoPago || v.medioPago,
-        fecha: v.fecha || v.hora || "",
-      });
+    // Estilo encabezado
+    sheet.getRow(1).eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
     });
 
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ------------------------------
+    // AGREGAR FILAS
+    // ------------------------------
+    ventas.forEach((v, index) => {
+      const row = sheet.addRow(v);
+
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      });
+
+      // Alternar color de filas
+      if (index % 2 === 0) {
+        row.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFF3F3F3" },
+          };
+        });
+      }
+    });
+
+    // ------------------------------
+    // TOTALES
+    // ------------------------------
+    const totalMonto = ventas.reduce((acc, v) => acc + v.monto, 0);
+    const totalComision = ventas.reduce((acc, v) => acc + v.comision, 0);
+
+    const totalRow = sheet.addRow({
+      id: "",
+      nombre: "TOTAL",
+      monto: totalMonto,
+      comision: totalComision,
+      vendedor: "",
+      metodoPago: "",
+      fecha: "",
+    });
+
+    totalRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE2E2E2" },
+      };
+      cell.border = {
+        top: { style: "medium" },
+        left: { style: "thin" },
+        bottom: { style: "medium" },
+        right: { style: "thin" },
+      };
+    });
+
+    sheet.autoFilter = "A1:G1";
+
+    // ------------------------------
+    // DESCARGA DEL ARCHIVO
+    // ------------------------------
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=ventas_${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.xlsx`
+      `attachment; filename=cierre_caja_${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.xlsx`
     );
 
     await wb.xlsx.write(res);
     res.end();
   } catch (e) {
-    res.status(500).json({ message: "Error al exportar Excel", error: e.message || e });
+    res.status(500).json({
+      message: "Error al exportar Excel",
+      error: e.message || e,
+    });
+  }
+}; 
+// =========================
+// OBTENER ORDEN POR ID
+// =========================
+export const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id).lean();
+    if (!order) return res.status(404).json({ message: "Orden no encontrada" });
+
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener la orden", error });
   }
 };
+
+// =========================
+// DESCARGAR ORDEN EN PDF
+// =========================
+export const downloadOrderPDF = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id).lean();
+    if (!order) return res.status(404).json({ message: "Orden no encontrada" });
+
+    const doc = new PDFDocument({ margin: 40 });
+
+    // Headers de descarga
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=orden_${order.orderNumber || id}.pdf`
+    );
+
+    doc.pipe(res);
+
+    // ============================
+    // ENCABEZADO
+    // ============================
+    doc
+      .fontSize(20)
+      .text("COMPROBANTE DE VENTA", { align: "center" })
+      .moveDown();
+
+    doc.fontSize(12).text(`Número de Orden: ${order.orderNumber}`);
+    doc.text(`Fecha: ${dayjs(order.createdAt).format("DD/MM/YYYY HH:mm")}`);
+    doc.text(`Vendedor: ${order.createdBy || "No especificado"}`);
+    doc.moveDown();
+
+    // ============================
+    // ITEMS
+    // ============================
+    doc.fontSize(14).text("Productos", { underline: true });
+    doc.moveDown(0.5);
+
+    order.items?.forEach((item) => {
+      doc.fontSize(12).text(`• ${item.title} x${item.quantity}`);
+      doc.text(`  Precio: $${item.price}`);
+      doc.text(`  Subtotal: $${item.subtotal}`);
+      doc.moveDown(0.5);
+    });
+
+    doc.moveDown();
+
+    // ============================
+    // MONTOS
+    // ============================
+    doc.fontSize(14).text("Totales", { underline: true });
+    doc.fontSize(12);
+
+    doc.text(`Subtotal: $${order?.totals?.sub || 0}`);
+    doc.text(`Descuentos: $${order?.totals?.discount || 0}`);
+    doc.text(`Total Final: $${order?.totals?.grand || 0}`);
+    doc.moveDown();
+
+    // ============================
+    // MÉTODO DE PAGO
+    // ============================
+    doc.fontSize(14).text("Método de Pago", { underline: true });
+    doc.fontSize(12);
+
+    doc.text(`Medio: ${order?.payment?.method || "No especificado"}`);
+    doc.text(`Estado: ${order?.status}`);
+    doc.moveDown();
+
+    // ============================
+    // FOOTER
+    // ============================
+    doc
+      .fontSize(10)
+      .text("Gracias por su compra.", { align: "center" })
+      .text("Sistema POS desarrollado por Joaquín.", { align: "center" });
+
+    doc.end();
+  } catch (error) {
+    res.status(500).json({ message: "Error al generar el PDF", error });
+  }
+};
+

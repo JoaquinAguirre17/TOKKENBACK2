@@ -17,6 +17,7 @@ import {
   // Reportes
   obtenerVentasCierreCaja,
   exportarVentasExcel,
+  downloadOrderPDF,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -39,5 +40,10 @@ router.get("/orders/:id", getOrderById);
 // Reportes
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
+// Obtener orden
+router.get("/:id", getOrderById);
+
+// Descargar PDF de la orden
+router.get("/:id/pdf", downloadOrderPDF);
 
 export default router;
