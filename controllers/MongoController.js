@@ -32,16 +32,51 @@ function resolveChannel(tags) {
 }
 
 // Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
+// Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
+// Esta versión es robusta: soporta item.qty / item.cantidad / item.quantity,
+// intenta por SKU y si falla usa productId -> variants[0]
 async function adjustStock(session, items, sign = -1) {
   for (const it of items) {
-    const sku = it.variant?.sku || it.sku; // soporta ambas estructuras
-    if (!sku) continue;
+    // normalizamos cantidad
+    const qty = Number(it.qty ?? it.cantidad ?? it.quantity ?? 0);
+    if (!qty) continue; // nada que hacer
 
-    await Product.updateOne(
-      { "variants.sku": sku },
-      { $inc: { "variants.$.stock": sign * it.qty } },
-      { session }
-    );
+    const sku = it.variant?.sku || it.sku || null;
+
+    // Si tenemos SKU, intentamos decrementar la variante por SKU
+    if (sku) {
+      const res = await Product.updateOne(
+        { "variants.sku": sku },
+        { $inc: { "variants.$.stock": sign * qty } },
+        { session }
+      );
+
+      // si no encontró variante por SKU, caemos al fallback por productId
+      if (res.matchedCount === 0 && it.productId) {
+        // intentar decrementar la primera variante del producto
+        await Product.updateOne(
+          { _id: it.productId, "variants.0": { $exists: true } },
+          { $inc: { "variants.0.stock": sign * qty } },
+          { session }
+        );
+      }
+      continue;
+    }
+
+    // Si no hay SKU, pero sí productId, decrementamos primera variante (fallback)
+    if (it.productId) {
+      const res2 = await Product.updateOne(
+        { _id: it.productId, "variants.0": { $exists: true } },
+        { $inc: { "variants.0.stock": sign * qty } },
+        { session }
+      );
+
+      // Si tampoco hay variantes (rare), podríamos loggear o crear una propiedad stock general
+      if (res2.matchedCount === 0) {
+        // opcional: registrar log para investigar
+        console.warn(`adjustStock: product ${it.productId} no tiene variantes para ajustar stock.`);
+      }
+    }
   }
 }
 
