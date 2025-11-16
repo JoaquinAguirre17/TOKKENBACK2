@@ -4,20 +4,123 @@ import ExcelJS from "exceljs";
 import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
 
-
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
-import Counter from "../Models/Counter.js";   // opcional (numeración)
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
-import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // solo importamos helpers
+import { adjustStock, nextOrderNumber } from './helpers.js';
 
+import MercadoPago from 'mercadopago';
 
-// Configurar Mercado Pago
-// controllers/appController.js
-import mercadopago from 'mercadopago';
+// Inicializar Mercado Pago correctamente (SDK v2)
+const mp = new MercadoPago({ access_token: process.env.MP_ACCESS_TOKEN });
 
-// ⚡ Inicialización correcta
-mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+export const createWebOrderMP = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      productos,           // [{ productId, price, qty, title, sku, variant }]
+      metodoPago,          // 'mercadopago', 'transferencia', etc.
+      customer,            // { name, email, phone }
+      shipping = 0,
+      tax = 0,
+      discount = 0,
+      notes,
+    } = req.body;
+
+    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
+    if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
+
+    // Traer productos de DB
+    const ids = productos.map(p => p.productId).filter(Boolean);
+    const productosDb = await Product.find({ _id: { $in: ids } }).lean();
+    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
+
+    // Normalizar items y calcular subtotal
+    const normItems = productos.map(p => {
+      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
+      const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
+      const qty = Number(p.qty ?? 1);
+      return {
+        productId: p.productId || pdb?._id,
+        title: p.title || pdb?.title || '',
+        price: unit,
+        qty,
+        subtotal: unit * qty,
+      };
+    });
+
+    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
+    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
+
+    const orderNumber = await nextOrderNumber("WEB");
+    const orderData = {
+      orderNumber,
+      channel: 'online',
+      status: 'created',
+      items: normItems,
+      totals: {
+        items: itemsSum,
+        discount,
+        shipping,
+        tax,
+        grand,
+        currency: 'ARS',
+      },
+      customer,
+      payment: {
+        method: metodoPago || 'otro',
+        status: 'pending',
+        amount: grand,
+      },
+      notes: notes || `Orden web - Método: ${metodoPago}`,
+    };
+
+    const [order] = await Order.create([orderData], { session });
+
+    // Ajustar stock
+    await adjustStock(session, normItems, -1);
+
+    await session.commitTransaction();
+
+    // ⚡ Si el método es Mercado Pago, crear preference
+    let mpInitPoint = null;
+    if (metodoPago === 'mercadopago') {
+      const preference = {
+        items: normItems.map(i => ({
+          title: i.title,
+          quantity: i.qty,
+          currency_id: 'ARS',
+          unit_price: Number(i.price),
+        })),
+        external_reference: order._id.toString(),
+        payer: {
+          name: customer.name,
+          email: customer.email,
+        },
+        back_urls: {
+          success: `${process.env.FRONT_URL}/checkout/success`,
+          failure: `${process.env.FRONT_URL}/checkout/failure`,
+          pending: `${process.env.FRONT_URL}/checkout/pending`,
+        },
+        auto_return: 'approved',
+      };
+
+      // Usar la instancia mp creada arriba
+      const mpResp = await mp.preferences.create(preference);
+      mpInitPoint = mpResp.body.init_point;
+    }
+
+    res.status(201).json({ order, mpInitPoint });
+
+  } catch (err) {
+    await session.abortTransaction();
+    console.error(err);
+    res.status(500).json({ message: 'Error al crear la orden web', error: err.message || err.toString() });
+  } finally {
+    session.endSession();
+  }
+};
 
 
 
@@ -471,108 +574,4 @@ export const downloadOrderPDF = async (req, res) => {
   }
 };
 
-export const createWebOrderMP = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const {
-      productos,           // [{ productId, price, qty, title, sku, variant }]
-      metodoPago,          // 'mercadopago', 'transferencia', etc.
-      customer,            // { name, email, phone }
-      shipping = 0,
-      tax = 0,
-      discount = 0,
-      notes,
-    } = req.body;
 
-    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
-
-    // Traer productos de DB
-    const ids = productos.map(p => p.productId).filter(Boolean);
-    const productosDb = await Product.find({ _id: { $in: ids } }).lean();
-    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
-
-    // Normalizar items y calcular subtotal
-    const normItems = productos.map(p => {
-      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
-      const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
-      const qty = Number(p.qty ?? 1);
-      return {
-        productId: p.productId || pdb?._id,
-        title: p.title || pdb?.title || '',
-        price: unit,
-        qty,
-        subtotal: unit * qty,
-      };
-    });
-
-    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
-    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
-
-    const orderNumber = await nextOrderNumber("WEB");
-    const orderData = {
-      orderNumber,
-      channel: 'online',
-      status: 'created',
-      items: normItems,
-      totals: {
-        items: itemsSum,
-        discount,
-        shipping,
-        tax,
-        grand,
-        currency: 'ARS',
-      },
-      customer,
-      payment: {
-        method: metodoPago || 'otro',
-        status: 'pending',
-        amount: grand,
-      },
-      notes: notes || `Orden web - Método: ${metodoPago}`,
-    };
-
-    const [order] = await Order.create([orderData], { session });
-
-    // Ajustar stock
-    await adjustStock(session, normItems, -1);
-
-    await session.commitTransaction();
-
-    if (metodoPago === 'mercadopago') {
-  const preference = {
-    items: normItems.map(i => ({
-      title: i.title,
-      quantity: i.qty,
-      currency_id: 'ARS',
-      unit_price: Number(i.price),
-    })),
-    external_reference: order._id.toString(),
-    payer: {
-      name: customer.name,
-      email: customer.email,
-    },
-    back_urls: {
-      success: `${process.env.FRONT_URL}/checkout/success`,
-      failure: `${process.env.FRONT_URL}/checkout/failure`,
-      pending: `${process.env.FRONT_URL}/checkout/pending`,
-    },
-    auto_return: 'approved',
-  };
-
-  const mpResp = await mercadopago.preferences.create(preference);
-  mpInitPoint = mpResp.body.init_point;
-}
-
-
-    res.status(201).json({ order, mpInitPoint });
-
-  } catch (err) {
-    await session.abortTransaction();
-    console.error(err);
-    res.status(500).json({ message: 'Error al crear la orden web', error: err.message || err.toString() });
-  } finally {
-    session.endSession();
-  }
-};
