@@ -277,11 +277,11 @@ export const listOrders = async (req, res) => {
     const { channel, status, q, from, to, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (channel) filter.channel = channel;
-    if (status)  filter.status = status;
+    if (status) filter.status = status;
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(from);
-      if (to)   filter.createdAt.$lte = new Date(to);
+      if (to) filter.createdAt.$lte = new Date(to);
     }
     if (q) {
       const r = new RegExp(q, "i");
@@ -477,7 +477,7 @@ export const exportarVentasExcel = async (req, res) => {
       error: e.message || e,
     });
   }
-}; 
+};
 // =========================
 // OBTENER ORDEN POR ID
 // =========================
@@ -535,11 +535,12 @@ export const downloadOrderPDF = async (req, res) => {
     doc.moveDown(0.5);
 
     order.items?.forEach((item) => {
-      doc.fontSize(12).text(`• ${item.title} x${item.quantity}`);
+      doc.fontSize(12).text(`• ${item.title} x${item.qty}`);
       doc.text(`  Precio: $${item.price}`);
       doc.text(`  Subtotal: $${item.subtotal}`);
       doc.moveDown(0.5);
     });
+
 
     doc.moveDown();
 
@@ -548,8 +549,7 @@ export const downloadOrderPDF = async (req, res) => {
     // ============================
     doc.fontSize(14).text("Totales", { underline: true });
     doc.fontSize(12);
-
-    doc.text(`Subtotal: $${order?.totals?.sub || 0}`);
+    doc.text(`Subtotal: $${order?.totals?.items || 0}`);
     doc.text(`Descuentos: $${order?.totals?.discount || 0}`);
     doc.text(`Total Final: $${order?.totals?.grand || 0}`);
     doc.moveDown();

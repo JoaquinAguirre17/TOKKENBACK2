@@ -9,20 +9,23 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  
   // Órdenes
   createOrder,
   confirmOrder,
   listOrders,
   getOrderById,
+  downloadOrderPDF,
+
   // Reportes
   obtenerVentasCierreCaja,
   exportarVentasExcel,
-  downloadOrderPDF,
+  
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
 
-// Productos
+/* -------------------- PRODUCTOS -------------------- */
 router.get("/products", getProducts);
 router.get("/products/search", searchProducts);
 router.get("/products/slug/:slug", getProductBySlug);
@@ -31,19 +34,20 @@ router.post("/products", createProduct);
 router.put("/products/:id", updateProduct);
 router.delete("/products/:id", deleteProduct);
 
-// Órdenes
+/* -------------------- ÓRDENES -------------------- */
 router.post("/orders", createOrder);
 router.post("/orders/confirm", confirmOrder);
 router.get("/orders", listOrders);
 router.get("/orders/:id", getOrderById);
 
-// Reportes
-router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
-router.post("/orders/export-excel", exportarVentasExcel);
-// Obtener orden
-router.get("/:id", getOrderById);
+// Descargar PDF
+router.get("/orders/:id/pdf", downloadOrderPDF);
 
-// Descargar PDF de la orden
-router.get("/:id/pdf", downloadOrderPDF);
+/* -------------------- CIERRE DE CAJA -------------------- */
+// Que coincida con el front:
+router.get("/shopify/cierre-caja", obtenerVentasCierreCaja);
+
+// Exportar excel
+router.post("/orders/export-excel", exportarVentasExcel);
 
 export default router;
