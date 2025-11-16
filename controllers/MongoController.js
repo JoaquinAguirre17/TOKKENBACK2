@@ -173,9 +173,7 @@ export const createOrder = async (req, res) => {
   }
 };
 
-mercadopago.configure({
-  access_token: process.env.MP_ACCESS_TOKEN
-});
+
 
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
@@ -183,21 +181,19 @@ export const createWebOrderMP = async (req, res) => {
 
   try {
     const {
-      productos,   // [{ productId, price, qty, title, sku, variant }]
-      metodoPago,  // 'mercadopago', 'transferencia', etc.
-      customer,    // { name, email, phone }
+      productos,    // [{ productId, price, qty, title, sku, variant }]
+      metodoPago,   // 'mercadopago', 'transferencia', etc.
+      customer,     // { name, email, phone }
       shipping = 0,
       tax = 0,
       discount = 0,
       notes,
     } = req.body;
 
-    if (!productos?.length) 
-      return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email) 
-      return res.status(400).json({ message: "Faltan datos del cliente" });
+    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
+    if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
 
-    // Traer productos de DB
+    // Traer productos de la DB
     const ids = productos.map(p => p.productId).filter(Boolean);
     const productosDb = await Product.find({ _id: { $in: ids } }).lean();
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
@@ -220,6 +216,7 @@ export const createWebOrderMP = async (req, res) => {
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
 
     const orderNumber = await nextOrderNumber("WEB");
+
     const orderData = {
       orderNumber,
       channel: 'online',
@@ -249,7 +246,9 @@ export const createWebOrderMP = async (req, res) => {
 
     await session.commitTransaction();
 
-    // ⚡ Si el método es Mercado Pago, crear preference
+    // -------------------------------
+    // Crear preference de Mercado Pago
+    // -------------------------------
     let mpInitPoint = null;
     if (metodoPago === 'mercadopago') {
       const preference = {
@@ -272,7 +271,10 @@ export const createWebOrderMP = async (req, res) => {
         auto_return: 'approved',
       };
 
-      const mpResp = await mercadopago.preferences.create(preference);
+      const mpResp = await mercadopago.preferences.create(preference, {
+        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+      });
+
       mpInitPoint = mpResp.body.init_point;
     }
 
