@@ -11,6 +11,7 @@ import Counter from "../Models/Counter.js";   // opcional (numeración)
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
 import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // solo importamos helpers
 
+
 // Configurar Mercado Pago
 MercadoPago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
 
