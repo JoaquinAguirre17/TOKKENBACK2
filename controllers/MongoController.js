@@ -9,63 +9,10 @@ import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
 import Counter from "../Models/Counter.js";   // opcional (numeración)
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
-import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // tus helpers pr
-// ---------- helpers ----------
+import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // solo importamos helpers
 
 // Configurar Mercado Pago
 MercadoPago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
-
-
-
-// Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
-// Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
-// Esta versión es robusta: soporta item.qty / item.cantidad / item.quantity,
-// intenta por SKU y si falla usa productId -> variants[0]
-async function adjustStock(session, items, sign = -1) {
-  for (const it of items) {
-    // normalizamos cantidad
-    const qty = Number(it.qty ?? it.cantidad ?? it.quantity ?? 0);
-    if (!qty) continue; // nada que hacer
-
-    const sku = it.variant?.sku || it.sku || null;
-
-    // Si tenemos SKU, intentamos decrementar la variante por SKU
-    if (sku) {
-      const res = await Product.updateOne(
-        { "variants.sku": sku },
-        { $inc: { "variants.$.stock": sign * qty } },
-        { session }
-      );
-
-      // si no encontró variante por SKU, caemos al fallback por productId
-      if (res.matchedCount === 0 && it.productId) {
-        // intentar decrementar la primera variante del producto
-        await Product.updateOne(
-          { _id: it.productId, "variants.0": { $exists: true } },
-          { $inc: { "variants.0.stock": sign * qty } },
-          { session }
-        );
-      }
-      continue;
-    }
-
-    // Si no hay SKU, pero sí productId, decrementamos primera variante (fallback)
-    if (it.productId) {
-      const res2 = await Product.updateOne(
-        { _id: it.productId, "variants.0": { $exists: true } },
-        { $inc: { "variants.0.stock": sign * qty } },
-        { session }
-      );
-
-      // Si tampoco hay variantes (rare), podríamos loggear o crear una propiedad stock general
-      if (res2.matchedCount === 0) {
-        // opcional: registrar log para investigar
-        console.warn(`adjustStock: product ${it.productId} no tiene variantes para ajustar stock.`);
-      }
-    }
-  }
-}
-
 
 // ---------- PRODUCTOS ----------
 export const getProducts = async (_req, res) => {
@@ -97,7 +44,6 @@ export const getProductBySlug = async (req, res) => {
   }
 };
 
-// controllers/... (el que estés usando)
 export const searchProducts = async (req, res) => {
   const { query } = req.query;
   if (!query || !query.trim()) {
@@ -106,16 +52,14 @@ export const searchProducts = async (req, res) => {
   try {
     const r = new RegExp(query.trim(), "i");
     const items = await Product.find({ $or: [{ title: r }, { sku: r }, { brand: r }] })
-      .select("title pricing images _id")   // solo lo necesario
+      .select("title pricing images _id")
       .limit(10)
       .lean();
-    res.json(items); // 👈 array directo
+    res.json(items);
   } catch (e) {
     res.status(500).json({ message: "Error al buscar productos", error: e.message });
   }
 };
-
-
 
 export const createProduct = async (req, res) => {
   try {
@@ -158,43 +102,23 @@ export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const {
-      productos,           // [{ productId, price, qty, title, sku, variant:{sku,color} }]
-      metodoPago,          // string flexible ahora
-      vendedor,
-      total,
-      tags = [],
-      fecha,
-      descuentoPorcentaje,
-      customer,
-      notes,
-      shipping = 0,
-      tax = 0,
-      discount = 0
-    } = req.body;
+    const { productos, metodoPago, vendedor, total, tags = [], fecha, descuentoPorcentaje, customer, notes, shipping = 0, tax = 0, discount = 0 } = req.body;
 
-    if (!productos?.length) 
-      return res.status(400).json({ message: "Faltan productos" });
+    if (!productos?.length) return res.status(400).json({ message: "Faltan productos" });
+    if (!metodoPago || !vendedor || total == null) return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
 
-    if (!metodoPago || !vendedor || total == null) 
-      return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
-
-    // Obtener productos de DB
     const ids = productos.map(p => p.productId).filter(Boolean);
     const productosDb = ids.length ? await Product.find({ _id: { $in: ids } }).lean() : [];
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
     const porcentaje = descuentoPorcentaje && !isNaN(descuentoPorcentaje) ? Number(descuentoPorcentaje) : 0;
 
-    // Normalizar items
     const normItems = productos.map((p) => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
-
       const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
       const precioRedondeado = Math.floor(precioOriginal / 100) * 100;
       const dtoFijo = porcentaje > 0 ? Math.floor(precioOriginal * (porcentaje / 100) / 100) * 100 : 0;
       const unit = Math.max(0, precioRedondeado - dtoFijo);
-
       const qty = Number(p.cantidad ?? p.quantity ?? p.qty ?? 1);
       const variantSku = p?.variant?.sku || p?.sku || pdb?.variants?.[0]?.sku || null;
       const color = p?.variant?.color || pdb?.variants?.[0]?.options?.color || null;
@@ -210,48 +134,31 @@ export const createOrder = async (req, res) => {
       };
     });
 
-    if (normItems.some(i => !i.productId)) 
-      throw new Error("Uno o más items no tienen productId válido.");
+    if (normItems.some(i => !i.productId)) throw new Error("Uno o más items no tienen productId válido.");
 
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
 
-    if (Math.round(grand) !== Math.round(Number(total))) 
-      throw new Error("Total inconsistente (server vs client)");
+    if (Math.round(grand) !== Math.round(Number(total))) throw new Error("Total inconsistente (server vs client)");
 
     const channel = resolveChannel(tags);
     const orderNumber = await nextOrderNumber("TOK");
 
-    // Crear orden
     const [order] = await Order.create([{
       orderNumber,
       channel,
       status: "created",
       items: normItems,
-      totals: {
-        items: itemsSum,
-        discount: Number(discount),
-        shipping: Number(shipping),
-        tax: Number(tax),
-        grand,
-        currency: "ARS",
-      },
+      totals: { items: itemsSum, discount: Number(discount), shipping: Number(shipping), tax: Number(tax), grand, currency: "ARS" },
       customer: customer || {},
-      payment: {
-        method: String(metodoPago || "otro"), // ahora flexible
-        status: "pending",
-        amount: grand,
-      },
+      payment: { method: String(metodoPago || "otro"), status: "pending", amount: grand },
       notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPago} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
       createdBy: vendedor || null,
     }], { session });
 
-    // Ajustar stock
     await adjustStock(session, normItems, -1);
-
     await session.commitTransaction();
 
-    // Si es POS, marcar pagada
     if (channel === "pos") {
       order.status = "paid";
       order.payment.status = "approved";
@@ -259,10 +166,7 @@ export const createOrder = async (req, res) => {
       await order.save();
     }
 
-    res.status(201).json({ 
-      message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).", 
-      order 
-    });
+    res.status(201).json({ message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).", order });
 
   } catch (e) {
     await session.abortTransaction();
@@ -271,6 +175,8 @@ export const createOrder = async (req, res) => {
     session.endSession();
   }
 };
+
+// ... resto de funciones idénticas a las tuyas, sin volver a declarar adjustStock
 
 
 // action: 'vendido' => paid ; 'no-vendido' => cancelled
