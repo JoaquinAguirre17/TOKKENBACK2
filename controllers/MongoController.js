@@ -506,7 +506,6 @@ export const downloadOrderPDF = async (req, res) => {
 
     const doc = new PDFDocument({ margin: 40 });
 
-    // Headers de descarga
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -541,7 +540,6 @@ export const downloadOrderPDF = async (req, res) => {
       doc.moveDown(0.5);
     });
 
-
     doc.moveDown();
 
     // ============================
@@ -549,6 +547,7 @@ export const downloadOrderPDF = async (req, res) => {
     // ============================
     doc.fontSize(14).text("Totales", { underline: true });
     doc.fontSize(12);
+
     doc.text(`Subtotal: $${order?.totals?.items || 0}`);
     doc.text(`Descuentos: $${order?.totals?.discount || 0}`);
     doc.text(`Total Final: $${order?.totals?.grand || 0}`);
@@ -577,4 +576,3 @@ export const downloadOrderPDF = async (req, res) => {
     res.status(500).json({ message: "Error al generar el PDF", error });
   }
 };
-
