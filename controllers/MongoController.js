@@ -171,11 +171,10 @@ export const deleteProduct = async (req, res) => {
 export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
     const {
-      productos,
-      metodoPago,
+      productos,           // [{ productId, price, qty, title, sku, variant:{sku,color} }]
+      metodoPago,          // string flexible ahora
       vendedor,
       total,
       tags = [],
@@ -185,16 +184,14 @@ export const createOrder = async (req, res) => {
       notes,
       shipping = 0,
       tax = 0,
-      discount = 0,
+      discount = 0
     } = req.body;
 
-    if (!productos?.length) return res.status(400).json({ message: "Faltan productos" });
-    if (!metodoPago || !vendedor || total == null) {
-      return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
-    }
+    if (!productos?.length) 
+      return res.status(400).json({ message: "Faltan productos" });
 
-    // Limpiar y normalizar el método de pago
-    const metodoPagoClean = String(metodoPago).replace(/\//g, "-").trim() || "other";
+    if (!metodoPago || !vendedor || total == null) 
+      return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
 
     // Obtener productos de DB
     const ids = productos.map(p => p.productId).filter(Boolean);
@@ -207,12 +204,12 @@ export const createOrder = async (req, res) => {
     const normItems = productos.map((p) => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
 
-      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list) || 0;
+      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list || 0);
       const precioRedondeado = Math.floor(precioOriginal / 100) * 100;
       const dtoFijo = porcentaje > 0 ? Math.floor(precioOriginal * (porcentaje / 100) / 100) * 100 : 0;
       const unit = Math.max(0, precioRedondeado - dtoFijo);
 
-      const qty = Number(p.cantidad ?? p.quantity ?? p.qty) || 1;
+      const qty = Number(p.cantidad ?? p.quantity ?? p.qty ?? 1);
       const variantSku = p?.variant?.sku || p?.sku || pdb?.variants?.[0]?.sku || null;
       const color = p?.variant?.color || pdb?.variants?.[0]?.options?.color || null;
 
@@ -223,20 +220,23 @@ export const createOrder = async (req, res) => {
         price: unit,
         qty,
         variant: (variantSku || color) ? { sku: variantSku, color } : undefined,
-        subtotal: unit * qty,
+        subtotal: unit * qty
       };
     });
 
-    if (normItems.some(i => !i.productId)) throw new Error("Uno o más items no tienen productId válido.");
+    if (normItems.some(i => !i.productId)) 
+      throw new Error("Uno o más items no tienen productId válido.");
 
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
 
-    if (Math.round(grand) !== Math.round(Number(total))) throw new Error("Total inconsistente (server vs client)");
+    if (Math.round(grand) !== Math.round(Number(total))) 
+      throw new Error("Total inconsistente (server vs client)");
 
     const channel = resolveChannel(tags);
     const orderNumber = await nextOrderNumber("TOK");
 
+    // Crear orden
     const [order] = await Order.create([{
       orderNumber,
       channel,
@@ -252,20 +252,20 @@ export const createOrder = async (req, res) => {
       },
       customer: customer || {},
       payment: {
-        method: metodoPagoClean, // ✅ método de pago seguro
+        method: String(metodoPago || "otro"), // ahora flexible
         status: "pending",
         amount: grand,
       },
-      notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPagoClean} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
+      notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPago} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
       createdBy: vendedor || null,
     }], { session });
 
-    // Descontar stock
+    // Ajustar stock
     await adjustStock(session, normItems, -1);
 
     await session.commitTransaction();
 
-    // Marcar POS como pagada automáticamente
+    // Si es POS, marcar pagada
     if (channel === "pos") {
       order.status = "paid";
       order.payment.status = "approved";
@@ -273,9 +273,9 @@ export const createOrder = async (req, res) => {
       await order.save();
     }
 
-    res.status(201).json({
-      message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).",
-      order,
+    res.status(201).json({ 
+      message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).", 
+      order 
     });
 
   } catch (e) {

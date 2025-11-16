@@ -14,24 +14,21 @@ const OrderItemSchema = new mongoose.Schema({
   subtotal: { type: Number, required: true },
 }, { _id: false });
 
-
-// 🔥 ENUM CORREGIDO PARA QUE ACEPTE LOS MÉTODOS DEL FRONTEND
+// PaymentSchema flexible, sin enum
 const PaymentSchema = new mongoose.Schema({
   method: { 
-    type: String, 
-    enum: ["efectivo", "QR/Transferencia", "debito", "credito", "otro"], 
+    type: String, // cualquier string es válido
     default: "otro" 
   },
   status: { 
     type: String, 
-    enum: ["pending","approved","rejected","refunded"], 
+    enum: ["pending","approved","rejected","refunded"], // solo status mantiene enum
     default: "pending" 
   },
   transactionId: String,
   paidAt: Date,
   amount: Number
 }, { _id: false });
-
 
 const CustomerSchema = new mongoose.Schema({
   name: String,
@@ -42,7 +39,6 @@ const CustomerSchema = new mongoose.Schema({
     line1:String, line2:String, city:String, state:String, zip:String 
   }
 }, { _id: false });
-
 
 const OrderSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true },
