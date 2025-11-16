@@ -171,20 +171,21 @@ export const deleteProduct = async (req, res) => {
 export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
     const {
-      productos,            // [{ productId, price, qty, title, sku, variant:{sku,color} }] o viejo: {precio,cantidad,variant_id}
-      metodoPago,           // string
-      vendedor,             // string
-      total,                // number (validamos)
-      tags = [],            // para canal
-      fecha,                // opcional
-      descuentoPorcentaje,  // opcional
-      customer,             // opcional
-      notes,                // opcional
+      productos,
+      metodoPago,
+      vendedor,
+      total,
+      tags = [],
+      fecha,
+      descuentoPorcentaje,
+      customer,
+      notes,
       shipping = 0,
       tax = 0,
-      discount = 0
+      discount = 0,
     } = req.body;
 
     if (!productos?.length) return res.status(400).json({ message: "Faltan productos" });
@@ -192,21 +193,26 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
     }
 
+    // Limpiar y normalizar el método de pago
+    const metodoPagoClean = String(metodoPago).replace(/\//g, "-").trim() || "other";
+
+    // Obtener productos de DB
     const ids = productos.map(p => p.productId).filter(Boolean);
     const productosDb = ids.length ? await Product.find({ _id: { $in: ids } }).lean() : [];
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
     const porcentaje = descuentoPorcentaje && !isNaN(descuentoPorcentaje) ? Number(descuentoPorcentaje) : 0;
 
+    // Normalizar items
     const normItems = productos.map((p) => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
 
-      const precioOriginal = toNumber(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list, 0);
-      const precioRedondeado = redondear100Abajo(precioOriginal);
-      const dtoFijo = porcentaje > 0 ? redondear100Abajo(precioOriginal * (porcentaje / 100)) : 0;
+      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list) || 0;
+      const precioRedondeado = Math.floor(precioOriginal / 100) * 100;
+      const dtoFijo = porcentaje > 0 ? Math.floor(precioOriginal * (porcentaje / 100) / 100) * 100 : 0;
       const unit = Math.max(0, precioRedondeado - dtoFijo);
 
-      const qty = toNumber(p.cantidad ?? p.quantity ?? p.qty, 1);
+      const qty = Number(p.cantidad ?? p.quantity ?? p.qty) || 1;
       const variantSku = p?.variant?.sku || p?.sku || pdb?.variants?.[0]?.sku || null;
       const color = p?.variant?.color || pdb?.variants?.[0]?.options?.color || null;
 
@@ -217,20 +223,16 @@ export const createOrder = async (req, res) => {
         price: unit,
         qty,
         variant: (variantSku || color) ? { sku: variantSku, color } : undefined,
-        subtotal: unit * qty
+        subtotal: unit * qty,
       };
     });
 
-    if (normItems.some(i => !i.productId)) {
-      throw new Error("Uno o más items no tienen productId válido.");
-    }
+    if (normItems.some(i => !i.productId)) throw new Error("Uno o más items no tienen productId válido.");
 
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
-    const grand = itemsSum + toNumber(shipping) + toNumber(tax) - toNumber(discount);
+    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
 
-    if (Math.round(grand) !== Math.round(toNumber(total))) {
-      throw new Error("Total inconsistente (server vs client)");
-    }
+    if (Math.round(grand) !== Math.round(Number(total))) throw new Error("Total inconsistente (server vs client)");
 
     const channel = resolveChannel(tags);
     const orderNumber = await nextOrderNumber("TOK");
@@ -242,28 +244,28 @@ export const createOrder = async (req, res) => {
       items: normItems,
       totals: {
         items: itemsSum,
-        discount: toNumber(discount),
-        shipping: toNumber(shipping),
-        tax: toNumber(tax),
+        discount: Number(discount),
+        shipping: Number(shipping),
+        tax: Number(tax),
         grand,
         currency: "ARS",
       },
       customer: customer || {},
       payment: {
-        method: String(metodoPago || "other"),
+        method: metodoPagoClean, // ✅ método de pago seguro
         status: "pending",
         amount: grand,
       },
-      notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPago} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
+      notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPagoClean} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
       createdBy: vendedor || null,
     }], { session });
 
-    // Política: descontar stock al crear
+    // Descontar stock
     await adjustStock(session, normItems, -1);
 
     await session.commitTransaction();
 
-    // Si es POS, marcamos pagada
+    // Marcar POS como pagada automáticamente
     if (channel === "pos") {
       order.status = "paid";
       order.payment.status = "approved";
@@ -271,7 +273,11 @@ export const createOrder = async (req, res) => {
       await order.save();
     }
 
-    res.status(201).json({ message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).", order });
+    res.status(201).json({
+      message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).",
+      order,
+    });
+
   } catch (e) {
     await session.abortTransaction();
     res.status(500).json({ message: "Error al crear la orden", error: e.message || e.toString() });
@@ -279,6 +285,7 @@ export const createOrder = async (req, res) => {
     session.endSession();
   }
 };
+
 
 // action: 'vendido' => paid ; 'no-vendido' => cancelled
 export const confirmOrder = async (req, res) => {
