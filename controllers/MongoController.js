@@ -315,10 +315,11 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const inicio = dayjs(fecha).startOf("day").toDate();
     const fin = dayjs(fecha).endOf("day").toDate();
 
+    // 🔥 Usamos payment.paidAt porque para POS siempre existe
     const orders = await Order.find({
       channel: "pos",
       status: { $in: ["paid", "fulfilled"] },
-      createdAt: { $gte: inicio, $lte: fin },
+      "payment.paidAt": { $gte: inicio, $lte: fin },
     }).lean();
 
     const ventas = orders.map((o) => {
@@ -332,7 +333,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         comision,
         vendedor: o?.createdBy || o?.customer?.name || "No especificado",
         metodoPago: o?.payment?.method || "No especificado",
-        fecha: dayjs(o.createdAt).format("YYYY-MM-DD HH:mm"),
+        fecha: dayjs(o.payment.paidAt).format("YYYY-MM-DD HH:mm"),
       };
     });
 
