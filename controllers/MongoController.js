@@ -9,10 +9,9 @@ import Order from "../Models/Order.js";
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
 import { adjustStock, nextOrderNumber } from './helpers.js';
 
-import MercadoPago from 'mercadopago';
-
-// Inicializar Mercado Pago correctamente (SDK v2)
-const mp = new MercadoPago({ access_token: process.env.MP_ACCESS_TOKEN });
+import mercadopago from 'mercadopago';
+mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+// ---------- ORDENES WEB CON MERCADO PAGO ----------
 
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
