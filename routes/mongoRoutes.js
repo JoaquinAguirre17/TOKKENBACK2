@@ -9,13 +9,14 @@ import {
   updateProduct,
   deleteProduct,
   createOrder,
+  createWebOrderMP,
   confirmOrder,
   listOrders,
   getOrderById,
   downloadOrderPDF,
   obtenerVentasCierreCaja,
   exportarVentasExcel,
-} from "../controllers/MongoController.js";
+} from "../controllers/appController.js";
 
 const router = express.Router();
 
@@ -29,20 +30,13 @@ router.put("/products/:id", updateProduct);
 router.delete("/products/:id", deleteProduct);
 
 /* -------------------- ÓRDENES -------------------- */
-router.post("/orders", createOrder);
-router.post("/orders/confirm", confirmOrder);
+router.post("/orders", createOrder);               // POS / admin
+router.post("/orders/web", createWebOrderMP);     // Web + Mercado Pago
+router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders", listOrders);
-
-// ⚠️ ESTA RUTA DEBE IR **ANTES** DE /orders/:id
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
-
-// Exportar excel
 router.post("/orders/export-excel", exportarVentasExcel);
-
-// Descargar PDF
 router.get("/orders/:id/pdf", downloadOrderPDF);
-
-// ESTA SIEMPRE AL FINAL
 router.get("/orders/:id", getOrderById);
 
 export default router;
