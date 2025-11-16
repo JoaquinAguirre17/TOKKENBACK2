@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import ExcelJS from "exceljs";
 import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
-import MercadoPago from 'mercadopago';
+
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
@@ -13,7 +13,14 @@ import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // 
 
 
 // Configurar Mercado Pago
-MercadoPago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+// controllers/appController.js
+import mercadopago from 'mercadopago';
+
+// ⚡ Inicialización correcta
+mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+
+
+
 
 // ---------- PRODUCTOS ----------
 export const getProducts = async (_req, res) => {
@@ -533,31 +540,31 @@ export const createWebOrderMP = async (req, res) => {
 
     await session.commitTransaction();
 
-    // ⚡ Si el método es Mercado Pago, crear preference
-    let mpInitPoint = null;
     if (metodoPago === 'mercadopago') {
-      const preference = {
-        items: normItems.map(i => ({
-          title: i.title,
-          quantity: i.qty,
-          currency_id: 'ARS',
-          unit_price: Number(i.price),
-        })),
-        external_reference: order._id.toString(),
-        payer: {
-          name: customer.name,
-          email: customer.email,
-        },
-        back_urls: {
-          success: `${process.env.FRONT_URL}/checkout/success`,
-          failure: `${process.env.FRONT_URL}/checkout/failure`,
-          pending: `${process.env.FRONT_URL}/checkout/pending`,
-        },
-        auto_return: 'approved',
-      };
-      const mpResp = await MercadoPago.preferences.create(preference);
-      mpInitPoint = mpResp.body.init_point;
-    }
+  const preference = {
+    items: normItems.map(i => ({
+      title: i.title,
+      quantity: i.qty,
+      currency_id: 'ARS',
+      unit_price: Number(i.price),
+    })),
+    external_reference: order._id.toString(),
+    payer: {
+      name: customer.name,
+      email: customer.email,
+    },
+    back_urls: {
+      success: `${process.env.FRONT_URL}/checkout/success`,
+      failure: `${process.env.FRONT_URL}/checkout/failure`,
+      pending: `${process.env.FRONT_URL}/checkout/pending`,
+    },
+    auto_return: 'approved',
+  };
+
+  const mpResp = await mercadopago.preferences.create(preference);
+  mpInitPoint = mpResp.body.init_point;
+}
+
 
     res.status(201).json({ order, mpInitPoint });
 
