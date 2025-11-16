@@ -16,7 +16,7 @@ import {
   downloadOrderPDF,
   obtenerVentasCierreCaja,
   exportarVentasExcel,
-} from "../controllers/appController.js";
+} from "../controllers/MongoController.js";
 
 const router = express.Router();
 
