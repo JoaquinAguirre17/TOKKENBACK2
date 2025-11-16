@@ -14,27 +14,48 @@ const OrderItemSchema = new mongoose.Schema({
   subtotal: { type: Number, required: true },
 }, { _id: false });
 
+
+// 🔥 ENUM CORREGIDO PARA QUE ACEPTE LOS MÉTODOS DEL FRONTEND
 const PaymentSchema = new mongoose.Schema({
-  method: { type: String, enum: ["cash","card","mp","transfer","other"], default: "other" },
-  status: { type: String, enum: ["pending","approved","rejected","refunded"], default: "pending" },
+  method: { 
+    type: String, 
+    enum: ["efectivo", "transferencia", "debito", "credito", "otro"], 
+    default: "otro" 
+  },
+  status: { 
+    type: String, 
+    enum: ["pending","approved","rejected","refunded"], 
+    default: "pending" 
+  },
   transactionId: String,
   paidAt: Date,
   amount: Number
 }, { _id: false });
+
 
 const CustomerSchema = new mongoose.Schema({
   name: String,
   email: String,
   phone: String,
   docId: String,
-  shippingAddress: { line1:String, line2:String, city:String, state:String, zip:String }
+  shippingAddress: { 
+    line1:String, line2:String, city:String, state:String, zip:String 
+  }
 }, { _id: false });
+
 
 const OrderSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true },
   channel: { type: String, enum: ["online","pos"], required: true },
-  status:  { type: String, enum: ["created","paid","fulfilled","cancelled","refunded"], default: "created" },
-  items: { type: [OrderItemSchema], validate: v => Array.isArray(v) && v.length > 0 },
+  status:  { 
+    type: String, 
+    enum: ["created","paid","fulfilled","cancelled","refunded"], 
+    default: "created" 
+  },
+  items: { 
+    type: [OrderItemSchema], 
+    validate: v => Array.isArray(v) && v.length > 0 
+  },
   totals: {
     items:   { type: Number, required: true },
     discount:{ type: Number, default: 0 },
