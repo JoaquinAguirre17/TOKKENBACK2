@@ -10,10 +10,9 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
 import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js';
 
-import mercadopago from 'mercadopago';
+import mercadopago from "mercadopago";
 
-// ===== CONFIGURAR MERCADO PAGO =====
-mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+
 
 // ---------- PRODUCTOS ----------
 export const getProducts = async (_req, res) => {
@@ -174,20 +173,36 @@ export const createOrder = async (req, res) => {
   }
 };
 
-// ---------- CREAR ORDEN WEB CON MERCADO PAGO ----------
+mercadopago.configure({
+  access_token: process.env.MP_ACCESS_TOKEN
+});
+
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
-    const { productos, metodoPago, customer, shipping = 0, tax = 0, discount = 0, notes } = req.body;
+    const {
+      productos,   // [{ productId, price, qty, title, sku, variant }]
+      metodoPago,  // 'mercadopago', 'transferencia', etc.
+      customer,    // { name, email, phone }
+      shipping = 0,
+      tax = 0,
+      discount = 0,
+      notes,
+    } = req.body;
 
-    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
+    if (!productos?.length) 
+      return res.status(400).json({ message: "Carrito vacío" });
+    if (!customer?.name || !customer?.email) 
+      return res.status(400).json({ message: "Faltan datos del cliente" });
 
+    // Traer productos de DB
     const ids = productos.map(p => p.productId).filter(Boolean);
     const productosDb = await Product.find({ _id: { $in: ids } }).lean();
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
+    // Normalizar items y calcular subtotal
     const normItems = productos.map(p => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
       const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
@@ -203,23 +218,38 @@ export const createWebOrderMP = async (req, res) => {
 
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
-    const orderNumber = await nextOrderNumber("WEB");
 
+    const orderNumber = await nextOrderNumber("WEB");
     const orderData = {
       orderNumber,
       channel: 'online',
       status: 'created',
       items: normItems,
-      totals: { items: itemsSum, discount, shipping, tax, grand, currency: 'ARS' },
+      totals: {
+        items: itemsSum,
+        discount,
+        shipping,
+        tax,
+        grand,
+        currency: 'ARS',
+      },
       customer,
-      payment: { method: metodoPago || 'otro', status: 'pending', amount: grand },
+      payment: {
+        method: metodoPago || 'otro',
+        status: 'pending',
+        amount: grand,
+      },
       notes: notes || `Orden web - Método: ${metodoPago}`,
     };
 
     const [order] = await Order.create([orderData], { session });
+
+    // Ajustar stock
     await adjustStock(session, normItems, -1);
+
     await session.commitTransaction();
 
+    // ⚡ Si el método es Mercado Pago, crear preference
     let mpInitPoint = null;
     if (metodoPago === 'mercadopago') {
       const preference = {
@@ -230,7 +260,10 @@ export const createWebOrderMP = async (req, res) => {
           unit_price: Number(i.price),
         })),
         external_reference: order._id.toString(),
-        payer: { name: customer.name, email: customer.email },
+        payer: {
+          name: customer.name,
+          email: customer.email,
+        },
         back_urls: {
           success: `${process.env.FRONT_URL}/checkout/success`,
           failure: `${process.env.FRONT_URL}/checkout/failure`,
@@ -253,7 +286,6 @@ export const createWebOrderMP = async (req, res) => {
     session.endSession();
   }
 };
-
 // ---------- CONFIRMAR ORDEN ----------
 export const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
