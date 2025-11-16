@@ -19,7 +19,7 @@ const OrderItemSchema = new mongoose.Schema({
 const PaymentSchema = new mongoose.Schema({
   method: { 
     type: String, 
-    enum: ["efectivo", "transferencia", "debito", "credito", "otro"], 
+    enum: ["efectivo", "QR/Transferencia", "debito", "credito", "otro"], 
     default: "otro" 
   },
   status: { 
