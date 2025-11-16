@@ -11,28 +11,11 @@ import Counter from "../Models/Counter.js";   // opcional (numeración)
 import { generateSKU } from "../GeneradorSku/skuGenerator.js";
 import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js'; // tus helpers pr
 // ---------- helpers ----------
-const toNumber = (v, d = 0) => (isNaN(Number(v)) ? d : Number(v));
-const redondear100Abajo = (valor) => Math.floor(Number(valor || 0) / 100) * 100;
+
 // Configurar Mercado Pago
 MercadoPago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
 
-async function nextOrderNumber(prefix = "TOK") {
-  // Si no querés usar Counter, podés devolver timestamp:
-  // return `${prefix}-${dayjs().format('YYYYMMDDHHmmss')}`;
-  const doc = await Counter.findOneAndUpdate(
-    { key: prefix },
-    { $inc: { seq: 1 } },
-    { upsert: true, new: true }
-  );
-  const padded = String(doc.seq).padStart(6, "0");
-  return `${prefix}-${padded}`;
-}
 
-function resolveChannel(tags) {
-  if (!tags) return "online";
-  const asStr = Array.isArray(tags) ? tags.join(",") : String(tags);
-  return asStr.toLowerCase().includes("local") ? "pos" : "online";
-}
 
 // Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
 // Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
