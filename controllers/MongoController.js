@@ -34,16 +34,17 @@ function resolveChannel(tags) {
 // Ajusta stock en variants.sku (o en la 1ra variante si no hay sku)
 async function adjustStock(session, items, sign = -1) {
   for (const it of items) {
-    const hasVariantSku = !!it?.variant?.sku;
+    const sku = it.variant?.sku || it.sku; // soporta ambas estructuras
+    if (!sku) continue;
+
     await Product.updateOne(
-      { _id: it.productId, ...(hasVariantSku ? { "variants.sku": it.variant.sku } : {}) },
-      hasVariantSku
-        ? { $inc: { "variants.$.stock": sign * it.qty } }
-        : { $inc: { "variants.0.stock": sign * it.qty } },
+      { "variants.sku": sku },
+      { $inc: { "variants.$.stock": sign * it.qty } },
       { session }
     );
   }
 }
+
 
 // ---------- PRODUCTOS ----------
 export const getProducts = async (_req, res) => {
