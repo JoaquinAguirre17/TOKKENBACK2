@@ -386,133 +386,83 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 // 2) EXPORTAR VENTAS A EXCEL (DISEÑO PROFESIONAL)
 // ------------------------------------------------------
 export const exportarVentasExcel = async (req, res) => {
-  const { ventas } = req.body;
-  if (!ventas?.length) {
-    return res.status(400).json({ message: "No hay ventas para exportar" });
-  }
-
   try {
-    const wb = new ExcelJS.Workbook();
-    const sheet = wb.addWorksheet("Ventas");
+    const { ventas } = req.body;
+    if (!ventas || !ventas.length) {
+      return res.status(400).json({ error: "No hay ventas para exportar" });
+    }
 
-    // ------------------------------
-    // ENCABEZADO PROFESIONAL
-    // ------------------------------
-    const headerFill = {
-      type: "gradient",
-      gradient: "angle",
-      degree: 0,
-      stops: [
-        { position: 0, color: { argb: "FF0A4F70" } }, // azul oscuro
-        { position: 1, color: { argb: "FF147AA8" } }, // azul claro
-      ],
-    };
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("ventas");
 
+    // 🧾 HOJA 1 - VENTAS
     sheet.columns = [
-      { header: "ID Orden", key: "id", width: 30 },
-      { header: "Nombre", key: "nombre", width: 20 },
-      { header: "Monto ($)", key: "monto", width: 15 },
-      { header: "Comisión (2%)", key: "comision", width: 18 },
+      { header: "ID", key: "id", width: 25 },
+      { header: "Nombre", key: "nombre", width: 25 },
       { header: "Vendedor", key: "vendedor", width: 20 },
-      { header: "Método de Pago", key: "metodoPago", width: 20 },
-      { header: "Fecha/Hora", key: "fecha", width: 22 },
+      { header: "Medio Pago", key: "medioPago", width: 20 },
+      { header: "Monto", key: "monto", width: 15 },
+      { header: "Comisión", key: "comision", width: 15 },
+      { header: "Fecha", key: "fecha", width: 20 },
+      { header: "Hora", key: "hora", width: 10 }
     ];
 
-    // Estilo encabezado
-    sheet.getRow(1).eachCell((cell) => {
-      cell.fill = headerFill;
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      cell.alignment = { vertical: "middle", horizontal: "center" };
-      cell.border = {
-        top: { style: "thin" },
-        left: { style: "thin" },
-        bottom: { style: "thin" },
-        right: { style: "thin" },
-      };
-    });
-
-    sheet.views = [{ state: "frozen", ySplit: 1 }];
-
-    // ------------------------------
-    // AGREGAR FILAS
-    // ------------------------------
-    ventas.forEach((v, index) => {
-      const row = sheet.addRow(v);
-
-      row.eachCell((cell) => {
-        cell.border = {
-          top: { style: "thin" },
-          left: { style: "thin" },
-          bottom: { style: "thin" },
-          right: { style: "thin" },
-        };
-        cell.alignment = { vertical: "middle", horizontal: "center" };
+    ventas.forEach(v => {
+      sheet.addRow({
+        id: v.id,
+        nombre: v.nombre,
+        vendedor: v.vendedor,
+        medioPago: v.medioPago,
+        monto: v.monto,
+        comision: v.comision,
+        fecha: v.fecha,
+        hora: v.hora,
       });
+    });
 
-      // Alternar color de filas
-      if (index % 2 === 0) {
-        row.eachCell((cell) => {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FFF3F3F3" },
-          };
-        });
+    // 🧾 HOJA 2 - RESUMEN POR VENDEDOR
+    const resumenSheet = workbook.addWorksheet("resumen_vendedores");
+
+    // Calcular totales por vendedor
+    const resume = ventas.reduce((acc, v) => {
+      if (!acc[v.vendedor]) {
+        acc[v.vendedor] = { total: 0, comision: 0 };
       }
+      acc[v.vendedor].total += Number(v.monto || 0);
+      acc[v.vendedor].comision += Number(v.comision || 0);
+      return acc;
+    }, {});
+
+    resumenSheet.columns = [
+      { header: "Vendedor", key: "vendedor", width: 20 },
+      { header: "Total Vendido", key: "total", width: 20 },
+      { header: "Comisión Total", key: "comision", width: 20 },
+    ];
+
+    Object.entries(resume).forEach(([vendedor, data]) => {
+      resumenSheet.addRow({
+        vendedor,
+        total: data.total,
+        comision: data.comision
+      });
     });
 
-    // ------------------------------
-    // TOTALES
-    // ------------------------------
-    const totalMonto = ventas.reduce((acc, v) => acc + v.monto, 0);
-    const totalComision = ventas.reduce((acc, v) => acc + v.comision, 0);
-
-    const totalRow = sheet.addRow({
-      id: "",
-      nombre: "TOTAL",
-      monto: totalMonto,
-      comision: totalComision,
-      vendedor: "",
-      metodoPago: "",
-      fecha: "",
-    });
-
-    totalRow.eachCell((cell) => {
-      cell.font = { bold: true };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFE2E2E2" },
-      };
-      cell.border = {
-        top: { style: "medium" },
-        left: { style: "thin" },
-        bottom: { style: "medium" },
-        right: { style: "thin" },
-      };
-    });
-
-    sheet.autoFilter = "A1:G1";
-
-    // ------------------------------
-    // DESCARGA DEL ARCHIVO
-    // ------------------------------
+    // 📄 Exportar
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=cierre_caja_${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.xlsx`
+      "attachment; filename=cierre_caja.xlsx"
     );
 
-    await wb.xlsx.write(res);
+    await workbook.xlsx.write(res);
     res.end();
-  } catch (e) {
-    res.status(500).json({
-      message: "Error al exportar Excel",
-      error: e.message || e,
-    });
+
+  } catch (err) {
+    console.error("Error exportando XLSX:", err);
+    res.status(500).json({ error: "Error al exportar XLSX" });
   }
 };
 // =========================
