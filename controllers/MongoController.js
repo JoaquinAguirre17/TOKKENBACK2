@@ -204,7 +204,7 @@ export const createOrder = async (req, res) => {
     const normItems = productos.map((p) => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
 
-      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list || 0);
+      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
       const precioRedondeado = Math.floor(precioOriginal / 100) * 100;
       const dtoFijo = porcentaje > 0 ? Math.floor(precioOriginal * (porcentaje / 100) / 100) * 100 : 0;
       const unit = Math.max(0, precioRedondeado - dtoFijo);
