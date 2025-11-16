@@ -1,7 +1,6 @@
 // routes/appRoutes.js
 import express from "express";
 import {
-  // Productos
   getProducts,
   getProductById,
   getProductBySlug,
@@ -9,18 +8,13 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  
-  // Órdenes
   createOrder,
   confirmOrder,
   listOrders,
   getOrderById,
   downloadOrderPDF,
-
-  // Reportes
   obtenerVentasCierreCaja,
   exportarVentasExcel,
-  
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -38,16 +32,17 @@ router.delete("/products/:id", deleteProduct);
 router.post("/orders", createOrder);
 router.post("/orders/confirm", confirmOrder);
 router.get("/orders", listOrders);
-router.get("/orders/:id", getOrderById);
+
+// ⚠️ ESTA RUTA DEBE IR **ANTES** DE /orders/:id
+router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
+
+// Exportar excel
+router.post("/orders/export-excel", exportarVentasExcel);
 
 // Descargar PDF
 router.get("/orders/:id/pdf", downloadOrderPDF);
 
-/* -------------------- CIERRE DE CAJA -------------------- */
-// Que coincida con el front:
-router.get("/shopify/cierre-caja", obtenerVentasCierreCaja);
-
-// Exportar excel
-router.post("/orders/export-excel", exportarVentasExcel);
+// ESTA SIEMPRE AL FINAL
+router.get("/orders/:id", getOrderById);
 
 export default router;
