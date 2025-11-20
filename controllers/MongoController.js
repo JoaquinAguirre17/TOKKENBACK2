@@ -15,7 +15,126 @@ const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN
 });
 
+export const createWebOrderMP = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
+  try {
+    console.log("📦 Body recibido:", req.body);
+
+    const { productos, metodoPago, customer, shipping = 0, tax = 0, discount = 0, notes } = req.body;
+
+    if (!Array.isArray(productos) || productos.length === 0) 
+      return res.status(400).json({ message: "Carrito vacío" });
+
+    if (!customer?.name || !customer?.email)
+      return res.status(400).json({ message: "Faltan datos del cliente" });
+
+    // Validar productId como ObjectId
+    const validIds = productos
+      .map(p => {
+        if (!p.productId) return null;
+        return mongoose.Types.ObjectId.isValid(p.productId) ? p.productId : null;
+      })
+      .filter(Boolean);
+
+    if (validIds.length === 0)
+      return res.status(400).json({ message: "Ningún producto tiene un productId válido" });
+
+    const productosDb = await Product.find({ _id: { $in: validIds } }).lean();
+    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
+
+    const normItems = productos.map(p => {
+      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
+      const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
+      const qty = Number(p.qty ?? 1);
+      return {
+        productId: p.productId || pdb?._id,
+        title: p.title || pdb?.title || '',
+        price: unit,
+        qty,
+        subtotal: unit * qty,
+      };
+    }).filter(i => i.productId); // filtra items sin productId válido
+
+    if (normItems.length === 0)
+      return res.status(400).json({ message: "Todos los items son inválidos" });
+
+    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
+    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
+
+    const orderNumber = await nextOrderNumber("WEB");
+
+    const orderData = {
+      orderNumber,
+      channel: 'online',
+      status: 'created',
+      items: normItems,
+      totals: {
+        items: itemsSum,
+        discount,
+        shipping,
+        tax,
+        grand,
+        currency: 'ARS',
+      },
+      customer,
+      payment: {
+        method: metodoPago || 'otro',
+        status: 'pending',
+        amount: grand,
+      },
+      notes: notes || `Orden web - Método: ${metodoPago}`,
+    };
+
+    const [order] = await Order.create([orderData], { session });
+
+    await adjustStock(session, normItems, -1);
+
+    await session.commitTransaction();
+
+    let mpInitPoint = null;
+
+    if (metodoPago === 'mercadopago') {
+      const preference = {
+        items: normItems.map(i => ({
+          title: i.title,
+          quantity: i.qty,
+          currency_id: 'ARS',
+          unit_price: Number(i.price),
+        })),
+        external_reference: order._id.toString(),
+        payer: {
+          name: customer.name,
+          email: customer.email,
+        },
+        back_urls: {
+          success: `${process.env.FRONT_URL}/checkout/success`,
+          failure: `${process.env.FRONT_URL}/checkout/failure`,
+          pending: `${process.env.FRONT_URL}/checkout/pending`,
+        },
+        auto_return: 'approved',
+      };
+
+      const preferenceClient = new Preference(mpClient);
+      const mpResp = await preferenceClient.create({ body: preference });
+      mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
+    }
+
+    res.status(201).json({ order, mpInitPoint });
+
+  } catch (err) {
+    try { await session.abortTransaction(); } catch (e) { console.error("Error abortTransaction:", e); }
+    console.error("❌ Error createWebOrderMP:", err);
+    res.status(500).json({ 
+      message: "Error al crear la orden web", 
+      error: err.message, 
+      stack: err.stack 
+    });
+  } finally {
+    session.endSession();
+  }
+};
 // -------------------------
 // Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
 // -------------------------
@@ -231,107 +350,7 @@ export const createOrder = async (req, res) => {
 
 
 
-export const createWebOrderMP = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
 
-  try {
-    const { productos, metodoPago, customer, shipping = 0, tax = 0, discount = 0, notes } = req.body;
-
-    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email)
-      return res.status(400).json({ message: "Faltan datos del cliente" });
-
-    // Filtrar solo productos con ObjectId válido
-    const validIds = productos
-      .map(p => p.productId)
-      .filter(id => mongoose.Types.ObjectId.isValid(id));
-
-    const productosDb = validIds.length
-      ? await Product.find({ _id: { $in: validIds } }).lean()
-      : [];
-
-    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
-
-    const normItems = productos.map(p => {
-      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
-      const validId = pdb?._id || (mongoose.Types.ObjectId.isValid(p.productId) ? p.productId : null);
-
-      if (!validId) throw new Error(`Producto sin productId válido: ${p.title || "SIN NOMBRE"}`);
-
-      const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
-      const qty = Number(p.qty ?? 1);
-
-      return {
-        productId: validId,
-        title: p.title || pdb?.title || "",
-        price: unit,
-        qty,
-        subtotal: unit * qty,
-      };
-    });
-
-    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
-    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
-
-    const orderNumber = await nextOrderNumber("WEB");
-
-    const orderData = {
-      orderNumber,
-      channel: "online",
-      status: "created",
-      items: normItems,
-      totals: { items: itemsSum, discount, shipping, tax, grand, currency: "ARS" },
-      customer,
-      payment: { method: metodoPago || "otro", status: "pending", amount: grand },
-      notes: notes || `Orden web - Método: ${metodoPago || "otro"}`,
-    };
-
-    const [order] = await Order.create([orderData], { session });
-
-    // Ajuste de stock
-    await adjustStock(session, normItems, -1);
-
-    await session.commitTransaction();
-
-    let mpInitPoint = null;
-
-    // MercadoPago
-    if (metodoPago === "mercadopago") {
-      const preference = {
-        items: normItems.map(i => ({
-          title: i.title,
-          quantity: i.qty,
-          currency_id: "ARS",
-          unit_price: Number(i.price),
-        })),
-        external_reference: order._id.toString(),
-        payer: { name: customer.name, email: customer.email },
-        back_urls: {
-          success: `${process.env.FRONT_URL}/checkout/success`,
-          failure: `${process.env.FRONT_URL}/checkout/failure`,
-          pending: `${process.env.FRONT_URL}/checkout/pending`,
-        },
-        auto_return: "approved",
-      };
-
-      const preferenceClient = new Preference(mpClient); // tu cliente MP ya inicializado
-      const mpResp = await preferenceClient.create({ body: preference });
-      mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
-    }
-
-    return res.status(201).json({ order, mpInitPoint });
-  } catch (err) {
-    // solo abortar si la transacción no fue committeada
-    try {
-      await session.abortTransaction();
-    } catch (_) {}
-    console.error("Error createWebOrderMP:", err);
-    return res.status(500).json({ message: "Error al crear la orden web", error: err.message });
-  } finally {
-    session.endSession();
-  }
-};
 
 
 export const confirmOrder = async (req, res) => {
