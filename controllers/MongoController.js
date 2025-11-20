@@ -9,7 +9,7 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
-import mercadopago from "mercadopago";
+
 
 
 // -------------------------
@@ -225,8 +225,10 @@ export const createOrder = async (req, res) => {
   }
 };
 
-mercadopago.configure({
-  access_token: process.env.MP_ACCESS_TOKEN,
+import { MercadoPagoConfig, Preference } from "mercadopago";
+
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN
 });
 
 export const createWebOrderMP = async (req, res) => {
@@ -320,8 +322,11 @@ export const createWebOrderMP = async (req, res) => {
         auto_return: 'approved',
       };
 
-      const mpResp = await mercadopago.preferences.create(preference);
-      mpInitPoint = mpResp.body.init_point;
+      const preferenceClient = new Preference(mpClient);
+
+      const mpResp = await preferenceClient.create({ body: preference });
+
+      mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
     }
 
     res.status(201).json({ order, mpInitPoint });
