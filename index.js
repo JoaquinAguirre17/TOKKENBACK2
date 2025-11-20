@@ -9,48 +9,43 @@ dotenv.config();
 const app = express();
 
 /* ----------------------------------------------------
-   🔥 FIX DEFINITIVO DE CORS (Render + OPTIONS)
+   ✅ CORS ÚNICO Y DEFINITIVO (Render + navegador)
 ---------------------------------------------------- */
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    "https://tokkencba.com",
-    "http://localhost:5173"
-  ];
+const allowedOrigins = [
+  "https://tokkencba.com",
+  "https://www.tokkencba.com",   // ⭐ FALTABA
+  "http://localhost:5173"
+];
 
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);   // ⭐ Evita 404 en Render
-  }
-
-  next();
-});
-
-/* ----------------------------------------------------
-   CORS NORMAL (pero ya protegido por el FIX)
----------------------------------------------------- */
 app.use(cors({
-  origin: ["https://tokkencba.com", "http://localhost:5173"],
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ CORS bloqueado para origen:", origin);
+      callback(new Error("CORS bloqueado"));
+    }
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
 }));
 
-// Body parser
+// Handler para OPTIONS (necesario en Render)
+app.options("*", cors());
+
+/* ----------------------------------------------------
+   Body parser
+---------------------------------------------------- */
 app.use(express.json({ limit: "5mb" }));
 
 /* ----------------------------------------------------
-   HEALTH CHECK (IMPORTANTE)
+   Health Check (Render)
 ---------------------------------------------------- */
 app.get("/health", (_, res) => res.send("ok"));
 
 /* ----------------------------------------------------
-   MONGO + SERVER
+   Mongo + Rutas
 ---------------------------------------------------- */
 const { MONGO_URI, PORT = 10000 } = process.env;
 
@@ -70,7 +65,7 @@ console.log("MONGO_URI (masked):", (MONGO_URI || "").replace(/:(.*?)@/, "://***@
 
     console.log("✅ Conectado a MongoDB");
 
-    // Montar rutas API
+    // Montar rutas
     app.use("/api", mongoRoutes);
 
     app.listen(PORT, () => {
