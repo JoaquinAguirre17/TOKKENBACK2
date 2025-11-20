@@ -19,7 +19,8 @@ app.options("*", cors());
 app.use(express.json({ limit: "5mb" }));
 
 // Health check
-app.get("/health", (_, res) => res.send("ok"));
+app.get("/api/health", (_, res) => res.json({ status: "ok" }));
+
 
 const { MONGO_URI, PORT = 10000 } = process.env;
 
