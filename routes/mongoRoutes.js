@@ -31,7 +31,8 @@ router.delete("/products/:id", deleteProduct);
 
 /* -------------------- ÓRDENES -------------------- */
 // Rutas fijas primero
-router.post("/orders/web", createWebOrderMP);     // Web + Mercado Pago
+router.post("/orders/web-mp", createWebOrderMP);
+    // Web + Mercado Pago
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
