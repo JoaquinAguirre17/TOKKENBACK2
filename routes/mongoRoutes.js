@@ -30,13 +30,21 @@ router.put("/products/:id", updateProduct);
 router.delete("/products/:id", deleteProduct);
 
 /* -------------------- ÓRDENES -------------------- */
-router.post("/orders", createOrder);               // POS / admin
+// Rutas fijas primero
 router.post("/orders/web", createWebOrderMP);     // Web + Mercado Pago
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
-router.get("/orders", listOrders);
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
+
+// POS / admin
+router.post("/orders", createOrder);               
+
+// Rutas dinámicas con :id al final
 router.get("/orders/:id/pdf", downloadOrderPDF);
 router.get("/orders/:id", getOrderById);
+
+// Listado general
+router.get("/orders", listOrders);
+
 
 export default router;
