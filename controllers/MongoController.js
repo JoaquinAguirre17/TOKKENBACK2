@@ -9,7 +9,8 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
-import { MercadoPagoConfig, Preference } from "mercadopago";
+import mercadopago from "mercadopago";
+
 
 // -------------------------
 // Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
@@ -224,15 +225,19 @@ export const createOrder = async (req, res) => {
   }
 };
 
+mercadopago.configure({
+  access_token: process.env.MP_ACCESS_TOKEN,
+});
+
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const {
-      productos,    // [{ productId, price, qty, title, sku, variant }]
-      metodoPago,   // 'mercadopago', 'transferencia', etc.
-      customer,     // { name, email, phone }
+      productos,
+      metodoPago,
+      customer,
       shipping = 0,
       tax = 0,
       discount = 0,
@@ -242,12 +247,10 @@ export const createWebOrderMP = async (req, res) => {
     if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
     if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
 
-    // Traer productos de la DB
     const ids = productos.map(p => p.productId).filter(Boolean);
     const productosDb = await Product.find({ _id: { $in: ids } }).lean();
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
-    // Normalizar items y calcular subtotal
     const normItems = productos.map(p => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
       const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
@@ -290,24 +293,14 @@ export const createWebOrderMP = async (req, res) => {
 
     const [order] = await Order.create([orderData], { session });
 
-    // Ajustar stock
     await adjustStock(session, normItems, -1);
 
     await session.commitTransaction();
 
-    // -------------------------------
-    // Crear preference de Mercado Pago (SDK moderno)
-    // -------------------------------
     let mpInitPoint = null;
+
     if (metodoPago === 'mercadopago') {
-      if (!process.env.MP_ACCESS_TOKEN) {
-        throw new Error('MP_ACCESS_TOKEN no configurado en el servidor');
-      }
-
-      const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-      const preferenceClient = new Preference(mpClient);
-
-      const preferenceBody = {
+      const preference = {
         items: normItems.map(i => ({
           title: i.title,
           quantity: i.qty,
@@ -327,17 +320,16 @@ export const createWebOrderMP = async (req, res) => {
         auto_return: 'approved',
       };
 
-      const mpResp = await preferenceClient.create({ body: preferenceBody });
-      // SDK moderno devuelve init_point en la raíz
-      mpInitPoint = mpResp?.init_point || mpResp?.body?.init_point || null;
+      const mpResp = await mercadopago.preferences.create(preference);
+      mpInitPoint = mpResp.body.init_point;
     }
 
     res.status(201).json({ order, mpInitPoint });
 
   } catch (err) {
     await session.abortTransaction();
-    console.error('Error createWebOrderMP:', err);
-    res.status(500).json({ message: 'Error al crear la orden web', error: err.message || err.toString() });
+    console.error("Error createWebOrderMP:", err);
+    res.status(500).json({ message: "Error al crear la orden web", error: err.message });
   } finally {
     session.endSession();
   }
