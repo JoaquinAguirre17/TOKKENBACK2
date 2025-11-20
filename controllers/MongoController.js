@@ -1,4 +1,3 @@
-// controllers/appController.js
 import dayjs from "dayjs";
 import ExcelJS from "exceljs";
 import mongoose from "mongoose";
@@ -7,14 +6,63 @@ import PDFDocument from "pdfkit";
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
 import Counter from "../Models/Counter.js"; // opcional (numeración)
-import { generateSKU } from "../GeneradorSku/skuGenerator.js";
-import { adjustStock, nextOrderNumber, resolveChannel } from './helpers.js';
+// import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
-import mercadopago from "mercadopago";
+// Mercado Pago (SDK moderno)
+import { MercadoPagoConfig, Preference } from "mercadopago";
 
+// -------------------------
+// Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
+// -------------------------
 
+/**
+ * Ajusta stock de los productos. Recibe la sesión de mongoose para operaciones transaccionales.
+ * - items: [{ productId, qty }]
+ * - delta: +1 o -1 multiplicador (por ejemplo -1 resta stock)
+ */
+export const adjustStock = async (session, items = [], multiplier = -1) => {
+  if (!session) throw new Error("Se requiere sesión para adjustStock");
+  if (!items || !items.length) return;
 
-// ---------- PRODUCTOS ----------
+  for (const it of items) {
+    if (!it.productId) continue;
+    const qty = Number(it.qty || it.quantity || 1) * Math.abs(multiplier);
+    await Product.updateOne(
+      { _id: it.productId },
+      { $inc: { "stock.available": -qty * Math.sign(multiplier) } },
+      { session }
+    );
+  }
+};
+
+/**
+ * Genera el siguiente número de orden. Implementación sencilla usando colección Counter.
+ * name: prefijo (ej: 'WEB' o 'TOK')
+ */
+export const nextOrderNumber = async (name = "WEB") => {
+  const doc = await Counter.findOneAndUpdate(
+    { key: `order_${name}` },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  const seq = doc.seq || 1;
+  const padded = String(seq).padStart(6, "0");
+  return `${name}-${padded}`;
+};
+
+/**
+ * Resolver canal a partir de tags u otra lógica.
+ */
+export const resolveChannel = (tags = []) => {
+  if (!Array.isArray(tags)) return "online";
+  if (tags.includes("pos")) return "pos";
+  if (tags.includes("marketplace")) return "marketplace";
+  return "online";
+};
+
+// -------------------------
+// Productos
+// -------------------------
 export const getProducts = async (_req, res) => {
   try {
     const items = await Product.find().lean();
@@ -65,7 +113,8 @@ export const createProduct = async (req, res) => {
   try {
     const body = { ...req.body };
     if (!body.title) return res.status(400).json({ error: "title es requerido" });
-    if (!body.sku) body.sku = generateSKU(body.title, body.brand);
+
+    // if (!body.sku) body.sku = generateSKU(body.title, body.brand);
 
     const created = await Product.create(body);
     res.status(201).json(created);
@@ -94,7 +143,9 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-// ---------- ÓRDENES ----------
+// -------------------------
+// Órdenes (POS / Web)
+// -------------------------
 export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -173,8 +224,6 @@ export const createOrder = async (req, res) => {
   }
 };
 
-
-
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -247,11 +296,18 @@ export const createWebOrderMP = async (req, res) => {
     await session.commitTransaction();
 
     // -------------------------------
-    // Crear preference de Mercado Pago
+    // Crear preference de Mercado Pago (SDK moderno)
     // -------------------------------
     let mpInitPoint = null;
     if (metodoPago === 'mercadopago') {
-      const preference = {
+      if (!process.env.MP_ACCESS_TOKEN) {
+        throw new Error('MP_ACCESS_TOKEN no configurado en el servidor');
+      }
+
+      const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+      const preferenceClient = new Preference(mpClient);
+
+      const preferenceBody = {
         items: normItems.map(i => ({
           title: i.title,
           quantity: i.qty,
@@ -271,24 +327,22 @@ export const createWebOrderMP = async (req, res) => {
         auto_return: 'approved',
       };
 
-      const mpResp = await mercadopago.preferences.create(preference, {
-        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
-      });
-
-      mpInitPoint = mpResp.body.init_point;
+      const mpResp = await preferenceClient.create({ body: preferenceBody });
+      // SDK moderno devuelve init_point en la raíz
+      mpInitPoint = mpResp?.init_point || mpResp?.body?.init_point || null;
     }
 
     res.status(201).json({ order, mpInitPoint });
 
   } catch (err) {
     await session.abortTransaction();
-    console.error(err);
+    console.error('Error createWebOrderMP:', err);
     res.status(500).json({ message: 'Error al crear la orden web', error: err.message || err.toString() });
   } finally {
     session.endSession();
   }
 };
-// ---------- CONFIRMAR ORDEN ----------
+
 export const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
   if (!draftOrderId || !action) return res.status(400).json({ message: "Faltan draftOrderId o action" });
@@ -315,7 +369,6 @@ export const confirmOrder = async (req, res) => {
   }
 };
 
-// ---------- LISTAR ÓRDENES ----------
 export const listOrders = async (req, res) => {
   try {
     const { channel, status, q, from, to, page = 1, limit = 20 } = req.query;
@@ -342,7 +395,6 @@ export const listOrders = async (req, res) => {
   }
 };
 
-// ---------- OBTENER VENTAS PARA CIERRE DE CAJA ----------
 export const obtenerVentasCierreCaja = async (req, res) => {
   try {
     const { fecha } = req.query;
@@ -377,7 +429,6 @@ export const obtenerVentasCierreCaja = async (req, res) => {
   }
 };
 
-// ---------- EXPORTAR VENTAS A EXCEL ----------
 export const exportarVentasExcel = async (req, res) => {
   try {
     const { ventas } = req.body;
@@ -439,7 +490,6 @@ export const exportarVentasExcel = async (req, res) => {
   }
 };
 
-// ---------- OBTENER ORDEN POR ID ----------
 export const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -451,7 +501,6 @@ export const getOrderById = async (req, res) => {
   }
 };
 
-// ---------- DESCARGAR ORDEN EN PDF ----------
 export const downloadOrderPDF = async (req, res) => {
   try {
     const { id } = req.params;
