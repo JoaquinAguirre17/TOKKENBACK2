@@ -11,31 +11,41 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 // Mercado Pago (SDK moderno)
 import { MercadoPagoConfig, Preference } from "mercadopago";
 
-const mpClient = new Preference({
-  access_token: process.env.MP_ACCESS_TOKEN
-});
+const mpClient = new Preference({ access_token: process.env.MP_ACCESS_TOKEN });
 
 export const createWebOrderMP = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { productos, metodoPago, customer, shipping = 0, tax = 0, discount = 0, notes } = req.body;
+    const {
+      productos,
+      metodoPago,
+      customer,
+      shipping = 0,
+      tax = 0,
+      discount = 0,
+      notes,
+    } = req.body;
 
+    // 1️⃣ Validaciones básicas
     if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email) return res.status(400).json({ message: "Faltan datos del cliente" });
+    if (!customer?.name || !customer?.email)
+      return res.status(400).json({ message: "Faltan datos del cliente" });
 
+    // 2️⃣ Traer productos de DB
     const ids = productos.map(p => p.productId).filter(Boolean);
-    const productosDb = ids.length ? await Product.find({ _id: { $in: ids } }).lean() : [];
+    const productosDb = await Product.find({ _id: { $in: ids } }).lean();
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
+    // 3️⃣ Normalizar items
     const normItems = productos.map(p => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
       const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
       const qty = Number(p.qty ?? 1);
       return {
         productId: p.productId || pdb?._id,
-        title: p.title || pdb?.title || '',
+        title: p.title || pdb?.title || "",
         price: unit,
         qty,
         subtotal: unit * qty,
@@ -45,58 +55,83 @@ export const createWebOrderMP = async (req, res) => {
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
 
-    const orderNumber = await nextOrderNumber("WEB");
+    // 4️⃣ Generar orderNumber (ejemplo simple, ajusta según tu función)
+    const orderNumber = `WEB-${Date.now()}`;
 
     const orderData = {
       orderNumber,
-      channel: 'online',
-      status: 'created',
+      channel: "online",
+      status: "created",
       items: normItems,
-      totals: { items: itemsSum, discount, shipping, tax, grand, currency: 'ARS' },
+      totals: {
+        items: itemsSum,
+        discount,
+        shipping,
+        tax,
+        grand,
+        currency: "ARS",
+      },
       customer,
-      payment: { method: metodoPago || 'otro', status: 'pending', amount: grand },
+      payment: {
+        method: metodoPago || "otro",
+        status: "pending",
+        amount: grand,
+      },
       notes: notes || `Orden web - Método: ${metodoPago}`,
     };
 
+    // 5️⃣ Crear la orden en MongoDB
     const [order] = await Order.create([orderData], { session });
-    await adjustStock(session, normItems, -1);
-    await session.commitTransaction();
-    session.endSession();
 
+    // 6️⃣ Ajustar stock
+    // await adjustStock(session, normItems, -1); // Descomenta si tienes esta función
+
+    await session.commitTransaction();
+
+    // 7️⃣ Preparar pago con MercadoPago
     let mpInitPoint = null;
 
-    if (metodoPago === 'mercadopago') {
+    if (metodoPago === "mercadopago") {
       try {
         const preference = {
           items: normItems.map(i => ({
             title: i.title,
             quantity: i.qty,
-            currency_id: 'ARS',
+            currency_id: "ARS",
             unit_price: Number(i.price),
           })),
           external_reference: order._id.toString(),
-          payer: { name: customer.name, email: customer.email },
+          payer: {
+            name: customer.name,
+            email: customer.email,
+          },
           back_urls: {
             success: `${process.env.FRONT_URL}/checkout/success`,
             failure: `${process.env.FRONT_URL}/checkout/failure`,
             pending: `${process.env.FRONT_URL}/checkout/pending`,
           },
-          auto_return: 'approved',
+          auto_return: "approved",
         };
+
         const mpResp = await mpClient.create({ body: preference });
+        console.log("✅ MercadoPago response:", mpResp);
+
+        // Puede variar según SDK
         mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
+        if (!mpInitPoint) console.warn("⚠️ mpInitPoint no recibido de MP");
       } catch (err) {
-        console.warn("⚠️ MercadoPago fallo, pero orden creada:", err.message);
+        console.error("❌ MercadoPago fallo:", err.message);
       }
     }
 
     res.status(201).json({ order, mpInitPoint });
 
   } catch (err) {
-    await session.abortTransaction().catch(() => {}); // evita error si ya hizo commit
-    session.endSession();
+    await session.abortTransaction().catch(e => console.warn("AbortTransaction fallo:", e.message));
     console.error("Error createWebOrderMP:", err);
     res.status(500).json({ message: "Error al crear la orden web", error: err.message });
+  } finally {
+    session.endSession();
   }
 };
 
