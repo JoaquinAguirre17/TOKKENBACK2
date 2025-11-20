@@ -20,48 +20,57 @@ export const createWebOrderMP = async (req, res) => {
   session.startTransaction();
 
   try {
-    console.log("📦 Body recibido:", req.body);
+    console.log("✅ createWebOrderMP - Body recibido:", req.body);
 
-    const { productos, metodoPago, customer, shipping = 0, tax = 0, discount = 0, notes } = req.body;
+    const {
+      productos,
+      metodoPago,
+      customer,
+      shipping = 0,
+      tax = 0,
+      discount = 0,
+      notes,
+    } = req.body;
 
-    if (!Array.isArray(productos) || productos.length === 0) 
+    // Validaciones básicas
+    if (!productos?.length) {
       return res.status(400).json({ message: "Carrito vacío" });
-
-    if (!customer?.name || !customer?.email)
+    }
+    if (!customer?.name || !customer?.email) {
       return res.status(400).json({ message: "Faltan datos del cliente" });
+    }
 
-    // Validar productId como ObjectId
-    const validIds = productos
-      .map(p => {
-        if (!p.productId) return null;
-        return mongoose.Types.ObjectId.isValid(p.productId) ? p.productId : null;
-      })
-      .filter(Boolean);
+    const ids = productos.map(p => p.productId).filter(Boolean);
+    console.log("✅ Productos a buscar en DB:", ids);
 
-    if (validIds.length === 0)
-      return res.status(400).json({ message: "Ningún producto tiene un productId válido" });
+    const productosDb = await Product.find({ _id: { $in: ids } }).lean();
+    console.log("✅ Productos encontrados en DB:", productosDb.length);
 
-    const productosDb = await Product.find({ _id: { $in: validIds } }).lean();
     const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
 
     const normItems = productos.map(p => {
       const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
       const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
       const qty = Number(p.qty ?? 1);
+
+      const productId = p.productId || pdb?._id;
+      if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+        throw new Error("Producto con ID inválido: " + JSON.stringify(p));
+      }
+
       return {
-        productId: p.productId || pdb?._id,
+        productId,
         title: p.title || pdb?.title || '',
         price: unit,
         qty,
         subtotal: unit * qty,
       };
-    }).filter(i => i.productId); // filtra items sin productId válido
-
-    if (normItems.length === 0)
-      return res.status(400).json({ message: "Todos los items son inválidos" });
+    });
 
     const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
     const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
+
+    console.log("✅ Totales:", { itemsSum, grand });
 
     const orderNumber = await nextOrderNumber("WEB");
 
@@ -87,54 +96,85 @@ export const createWebOrderMP = async (req, res) => {
       notes: notes || `Orden web - Método: ${metodoPago}`,
     };
 
+    console.log("✅ Datos de orden a crear:", orderData);
+
     const [order] = await Order.create([orderData], { session });
 
-    await adjustStock(session, normItems, -1);
+    console.log("✅ Orden creada con _id:", order._id);
+
+    // Ajuste de stock
+    try {
+      await adjustStock(session, normItems, -1);
+      console.log("✅ Stock ajustado correctamente");
+    } catch (err) {
+      console.error("⚠️ Error ajustando stock:", err);
+      throw new Error("Error ajustando stock: " + err.message);
+    }
 
     await session.commitTransaction();
+    console.log("✅ Transacción confirmada");
 
     let mpInitPoint = null;
-
     if (metodoPago === 'mercadopago') {
-      const preference = {
-        items: normItems.map(i => ({
-          title: i.title,
-          quantity: i.qty,
-          currency_id: 'ARS',
-          unit_price: Number(i.price),
-        })),
-        external_reference: order._id.toString(),
-        payer: {
-          name: customer.name,
-          email: customer.email,
-        },
-        back_urls: {
-          success: `${process.env.FRONT_URL}/checkout/success`,
-          failure: `${process.env.FRONT_URL}/checkout/failure`,
-          pending: `${process.env.FRONT_URL}/checkout/pending`,
-        },
-        auto_return: 'approved',
-      };
+      try {
+        const preference = {
+          items: normItems.map(i => ({
+            title: i.title,
+            quantity: i.qty,
+            currency_id: 'ARS',
+            unit_price: Number(i.price),
+          })),
+          external_reference: order._id.toString(),
+          payer: {
+            name: customer.name,
+            email: customer.email,
+          },
+          back_urls: {
+            success: `${process.env.FRONT_URL}/checkout/success`,
+            failure: `${process.env.FRONT_URL}/checkout/failure`,
+            pending: `${process.env.FRONT_URL}/checkout/pending`,
+          },
+          auto_return: 'approved',
+        };
 
-      const preferenceClient = new Preference(mpClient);
-      const mpResp = await preferenceClient.create({ body: preference });
-      mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
+        const preferenceClient = new Preference(mpClient);
+        const mpResp = await preferenceClient.create({ body: preference });
+        mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
+        console.log("✅ Preferencia MercadoPago creada:", mpInitPoint);
+      } catch (err) {
+        console.error("⚠️ Error creando preferencia MercadoPago:", err);
+        // No aborta la orden, pero devuelve el error al frontend
+        return res.status(500).json({
+          message: "Orden creada, pero fallo MercadoPago",
+          order,
+          mpError: err.message,
+        });
+      }
     }
 
     res.status(201).json({ order, mpInitPoint });
 
   } catch (err) {
-    try { await session.abortTransaction(); } catch (e) { console.error("Error abortTransaction:", e); }
     console.error("❌ Error createWebOrderMP:", err);
-    res.status(500).json({ 
-      message: "Error al crear la orden web", 
-      error: err.message, 
-      stack: err.stack 
+
+    // Abort seguro
+    try {
+      await session.abortTransaction();
+    } catch (abortErr) {
+      console.error("⚠️ Error abortando transacción:", abortErr.message);
+    }
+
+    // Respuesta detallada al frontend
+    res.status(500).json({
+      message: "Error al crear la orden web",
+      error: err.message,
+      stack: err.stack,
     });
   } finally {
     session.endSession();
   }
 };
+
 // -------------------------
 // Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
 // -------------------------
