@@ -6,6 +6,8 @@ import PDFDocument from "pdfkit";
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
 import Counter from "../Models/Counter.js"; // opcional (numeración)
+import { adjustStock } from "../Utils/adjustStock.js";
+import { generateOrderNumber } from "../Utils/orderNumber.js";
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
@@ -144,66 +146,7 @@ export const createWebOrderMP = async (req, res) => {
  * - items: [{ productId, qty }]
  * - delta: +1 o -1 multiplicador (por ejemplo -1 resta stock)
  */
-export const adjustStock = async (session, items, sign = -1) => {
 
-  const operations = [];
-
-  for (const item of items) {
-
-    if (!item.productId) {
-      throw new Error("Item sin productId");
-    }
-
-    // si hay SKU actualizamos variante
-    if (item.sku) {
-
-      operations.push({
-
-        updateOne: {
-
-          filter: {
-            _id: item.productId,
-            "variants.sku": item.sku
-          },
-
-          update: {
-            $inc: {
-              "variants.$.stock": item.qty * sign
-            }
-          }
-
-        }
-
-      });
-
-    } else {
-
-      // fallback primera variante
-      operations.push({
-
-        updateOne: {
-
-          filter: { _id: item.productId },
-
-          update: {
-            $inc: {
-              "variants.0.stock": item.qty * sign
-            }
-          }
-
-        }
-
-      });
-
-    }
-
-  }
-
-  if (operations.length) {
-    await Product.bulkWrite(operations, { session });
-  }
-
-};
 /**
  * Genera el siguiente número de orden. Implementación sencilla usando colección Counter.
  * name: prefijo (ej: 'WEB' o 'TOK')
@@ -322,15 +265,13 @@ export const createOrder = async (req, res) => {
 
     const { productos, metodoPago, vendedor, total } = req.body;
 
-    console.log("VENTA RECIBIDA:", req.body);
+    console.log("VENTA:", req.body);
 
-    if (!productos || productos.length === 0) {
+    if (!productos?.length) {
       return res.status(400).json({ message: "No hay productos" });
     }
 
-    const ids = productos
-      .map(p => p.productId)
-      .filter(Boolean);
+    const ids = productos.map(p => p.productId);
 
     const productosDb = await Product.find({
       _id: { $in: ids }
@@ -344,59 +285,62 @@ export const createOrder = async (req, res) => {
 
       const db = mapProd.get(String(p.productId));
 
-      if (!db) {
-        throw new Error(`Producto no encontrado: ${p.productId}`);
-      }
-
       const price = Number(
         p.precio ??
-        p.price ??
         db?.pricing?.sale ??
         db?.pricing?.list ??
         0
       );
 
-      const qty = Number(p.cantidad ?? p.qty ?? 1);
-
-      const sku = p.sku || db?.variants?.[0]?.sku || null;
+      const qty = Number(p.cantidad ?? 1);
 
       return {
+
         productId: db._id,
-        title: p.title || db.title,
-        sku,
+
+        title: db.title,
+
+        sku: db?.variants?.[0]?.sku,
+
         price,
+
         qty,
+
         subtotal: price * qty
+
       };
 
     });
 
     const itemsTotal = normItems.reduce(
-      (acc, item) => acc + item.subtotal,
+      (a, b) => a + b.subtotal,
       0
     );
 
-    if (Math.round(itemsTotal) !== Math.round(Number(total))) {
+    if (Math.round(itemsTotal) !== Math.round(total)) {
       throw new Error("Total inconsistente");
     }
 
+    const orderNumber = await generateOrderNumber();
+
     const order = new Order({
+
+      orderNumber,
 
       items: normItems,
 
       totals: {
         items: itemsTotal,
-        grand: itemsTotal,
-        currency: "ARS"
+        grand: itemsTotal
       },
 
       payment: {
-        method: metodoPago || "efectivo",
+        method: metodoPago,
         status: "approved",
         amount: itemsTotal
       },
 
-      createdBy: vendedor || "POS"
+      createdBy: vendedor
 
     });
 
@@ -406,24 +350,21 @@ export const createOrder = async (req, res) => {
 
     await session.commitTransaction();
 
-    return res.status(201).json({
-      message: "Venta registrada correctamente",
+    res.status(201).json({
+      message: "Venta registrada",
       order
     });
 
   } catch (error) {
 
-  console.error("❌ ERROR CREANDO ORDEN:");
-  console.error(error);
+    await session.abortTransaction();
 
-  await session.abortTransaction();
+    console.error("❌ ERROR CREANDO ORDEN:", error);
 
-  res.status(500).json({
-    message: "Error al crear orden",
-    error: error.message
-  });
-
-
+    res.status(500).json({
+      message: "Error al crear orden",
+      error: error.message
+    });
 
   } finally {
 

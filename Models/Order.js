@@ -1,33 +1,32 @@
 import mongoose from "mongoose";
 
-const itemSchema = new mongoose.Schema({
-
-  productId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Product",
-    required: true
-  },
-
-  title: String,
-
-  sku: String,
-
-  price: Number,
-
-  qty: Number,
-
-  subtotal: Number
-
-});
-
 const orderSchema = new mongoose.Schema({
 
-  status: {
+  orderNumber: {
     type: String,
-    default: "paid"
+    unique: true
   },
 
-  items: [itemSchema],
+  items: [
+
+    {
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product"
+      },
+
+      title: String,
+
+      sku: String,
+
+      price: Number,
+
+      qty: Number,
+
+      subtotal: Number
+    }
+
+  ],
 
   totals: {
 
@@ -35,10 +34,7 @@ const orderSchema = new mongoose.Schema({
 
     grand: Number,
 
-    currency: {
-      type: String,
-      default: "ARS"
-    }
+    currency: { type: String, default: "ARS" }
 
   },
 

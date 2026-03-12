@@ -1,14 +1,5 @@
 import mongoose from "mongoose";
 
-const variantSchema = new mongoose.Schema({
-  sku: { type: String, required: true },
-  price: Number,
-  stock: {
-    type: Number,
-    default: 0
-  }
-});
-
 const productSchema = new mongoose.Schema({
 
   sku: { type: String, required: true, unique: true },
@@ -30,16 +21,24 @@ const productSchema = new mongoose.Schema({
     taxIncluded: { type: Boolean, default: true }
   },
 
-  images: [{
-    url: String,
-    alt: String
-  }],
+  images: [
+    {
+      url: String,
+      alt: String
+    }
+  ],
 
-  variants: [variantSchema],
+  variants: [
+    {
+      sku: String,
+      stock: { type: Number, default: 0 },
+      price: Number
+    }
+  ],
 
   status: {
     type: String,
-    enum: ["active","draft","archived"],
+    enum: ["active", "draft", "archived"],
     default: "active"
   }
 
