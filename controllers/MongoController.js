@@ -413,14 +413,17 @@ export const createOrder = async (req, res) => {
 
   } catch (error) {
 
-    console.error("❌ ERROR CREANDO ORDEN:", error);
+  console.error("❌ ERROR CREANDO ORDEN:");
+  console.error(error);
 
-    await session.abortTransaction();
+  await session.abortTransaction();
 
-    return res.status(500).json({
-      message: "Error al crear orden",
-      error: error.message
-    });
+  res.status(500).json({
+    message: "Error al crear orden",
+    error: error.message
+  });
+
+
 
   } finally {
 
