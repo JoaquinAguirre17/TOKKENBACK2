@@ -315,17 +315,22 @@ export const deleteProduct = async (req, res) => {
 export const createOrder = async (req, res) => {
 
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
 
+    await session.startTransaction();
+
     const { productos, metodoPago, vendedor, total } = req.body;
 
-    if (!productos?.length) {
+    console.log("VENTA RECIBIDA:", req.body);
+
+    if (!productos || productos.length === 0) {
       return res.status(400).json({ message: "No hay productos" });
     }
 
-    const ids = productos.map(p => p.productId);
+    const ids = productos
+      .map(p => p.productId)
+      .filter(Boolean);
 
     const productosDb = await Product.find({
       _id: { $in: ids }
@@ -339,6 +344,10 @@ export const createOrder = async (req, res) => {
 
       const db = mapProd.get(String(p.productId));
 
+      if (!db) {
+        throw new Error(`Producto no encontrado: ${p.productId}`);
+      }
+
       const price = Number(
         p.precio ??
         p.price ??
@@ -347,32 +356,27 @@ export const createOrder = async (req, res) => {
         0
       );
 
-      const qty = Number(p.cantidad ?? 1);
+      const qty = Number(p.cantidad ?? p.qty ?? 1);
+
+      const sku = p.sku || db?.variants?.[0]?.sku || null;
 
       return {
-
-        productId: p.productId,
-
-        title: p.title || db?.title,
-
-        sku: p.sku || db?.variants?.[0]?.sku,
-
+        productId: db._id,
+        title: p.title || db.title,
+        sku,
         price,
-
         qty,
-
         subtotal: price * qty
-
       };
 
     });
 
     const itemsTotal = normItems.reduce(
-      (a, b) => a + b.subtotal,
+      (acc, item) => acc + item.subtotal,
       0
     );
 
-    if (Math.round(itemsTotal) !== Math.round(total)) {
+    if (Math.round(itemsTotal) !== Math.round(Number(total))) {
       throw new Error("Total inconsistente");
     }
 
@@ -382,16 +386,17 @@ export const createOrder = async (req, res) => {
 
       totals: {
         items: itemsTotal,
-        grand: itemsTotal
+        grand: itemsTotal,
+        currency: "ARS"
       },
 
       payment: {
-        method: metodoPago,
+        method: metodoPago || "efectivo",
         status: "approved",
         amount: itemsTotal
       },
 
-      createdBy: vendedor
+      createdBy: vendedor || "POS"
 
     });
 
@@ -401,16 +406,18 @@ export const createOrder = async (req, res) => {
 
     await session.commitTransaction();
 
-    res.status(201).json({
-      message: "Venta registrada",
+    return res.status(201).json({
+      message: "Venta registrada correctamente",
       order
     });
 
   } catch (error) {
 
+    console.error("❌ ERROR CREANDO ORDEN:", error);
+
     await session.abortTransaction();
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error al crear orden",
       error: error.message
     });
