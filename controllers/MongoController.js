@@ -144,21 +144,30 @@ export const createWebOrderMP = async (req, res) => {
  * - items: [{ productId, qty }]
  * - delta: +1 o -1 multiplicador (por ejemplo -1 resta stock)
  */
-export const adjustStock = async (session, items = [], multiplier = -1) => {
-  if (!session) throw new Error("Se requiere sesión para adjustStock");
-  if (!items || !items.length) return;
+export const adjustStock = async (session, items, sign = -1) => {
 
-  for (const it of items) {
-    if (!it.productId) continue;
-    const qty = Number(it.qty || it.quantity || 1) * Math.abs(multiplier);
-    await Product.updateOne(
-      { _id: it.productId },
-      { $inc: { "stock.available": -qty * Math.sign(multiplier) } },
-      { session }
-    );
-  }
+  const operations = items.map(item => ({
+
+    updateOne: {
+
+      filter: {
+        _id: item.productId,
+        "variants.sku": item.sku
+      },
+
+      update: {
+        $inc: {
+          "variants.$.stock": item.qty * sign
+        }
+      }
+
+    }
+
+  }));
+
+  await Product.bulkWrite(operations, { session });
+
 };
-
 /**
  * Genera el siguiente número de orden. Implementación sencilla usando colección Counter.
  * name: prefijo (ej: 'WEB' o 'TOK')
@@ -267,89 +276,116 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-// -------------------------
-// Órdenes (POS / Web)
-// -------------------------
 export const createOrder = async (req, res) => {
+
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
-    const { productos, metodoPago, vendedor, total, tags = [], fecha, descuentoPorcentaje, customer, notes, shipping = 0, tax = 0, discount = 0 } = req.body;
 
-    if (!productos?.length) return res.status(400).json({ message: "Faltan productos" });
-    if (!metodoPago || !vendedor || total == null) return res.status(400).json({ message: "Faltan metodoPago, vendedor o total" });
+    const { productos, metodoPago, vendedor, total } = req.body;
 
-    const ids = productos.map(p => p.productId).filter(Boolean);
-    const productosDb = ids.length ? await Product.find({ _id: { $in: ids } }).lean() : [];
-    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
-
-    const porcentaje = descuentoPorcentaje && !isNaN(descuentoPorcentaje) ? Number(descuentoPorcentaje) : 0;
-
-    const normItems = productos.map((p) => {
-      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
-      const precioOriginal = Number(p.precio ?? p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
-      const precioRedondeado = Math.floor(precioOriginal / 100) * 100;
-      const dtoFijo = porcentaje > 0 ? Math.floor(precioOriginal * (porcentaje / 100) / 100) * 100 : 0;
-      const unit = Math.max(0, precioRedondeado - dtoFijo);
-      const qty = Number(p.cantidad ?? p.quantity ?? p.qty ?? 1);
-      const variantSku = p?.variant?.sku || p?.sku || pdb?.variants?.[0]?.sku || null;
-      const color = p?.variant?.color || pdb?.variants?.[0]?.options?.color || null;
-
-      return {
-        productId: p.productId || pdb?._id,
-        title: p.title || pdb?.title || "",
-        sku: variantSku || pdb?.sku || null,
-        price: unit,
-        qty,
-        variant: (variantSku || color) ? { sku: variantSku, color } : undefined,
-        subtotal: unit * qty
-      };
-    });
-
-    if (normItems.some(i => !i.productId)) throw new Error("Uno o más items no tienen productId válido.");
-
-    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
-    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
-
-    if (Math.round(grand) !== Math.round(Number(total))) throw new Error("Total inconsistente (server vs client)");
-
-    const channel = resolveChannel(tags);
-    const orderNumber = await nextOrderNumber("TOK");
-
-    const [order] = await Order.create([{
-      orderNumber,
-      channel,
-      status: "created",
-      items: normItems,
-      totals: { items: itemsSum, discount: Number(discount), shipping: Number(shipping), tax: Number(tax), grand, currency: "ARS" },
-      customer: customer || {},
-      payment: { method: String(metodoPago || "otro"), status: "pending", amount: grand },
-      notes: notes || `Venta - Vendedor: ${vendedor} - Método de pago: ${metodoPago} - Total: ${grand} - Fecha: ${fecha || new Date().toISOString()}`,
-      createdBy: vendedor || null,
-    }], { session });
-
-    await adjustStock(session, normItems, -1);
-    await session.commitTransaction();
-
-    if (channel === "pos") {
-      order.status = "paid";
-      order.payment.status = "approved";
-      order.payment.paidAt = new Date();
-      await order.save();
+    if (!productos?.length) {
+      return res.status(400).json({ message: "No hay productos" });
     }
 
-    res.status(201).json({ message: channel === "pos" ? "Venta local registrada." : "Orden creada (web).", order });
+    const ids = productos.map(p => p.productId);
 
-  } catch (e) {
+    const productosDb = await Product.find({
+      _id: { $in: ids }
+    }).lean();
+
+    const mapProd = new Map(
+      productosDb.map(p => [String(p._id), p])
+    );
+
+    const normItems = productos.map(p => {
+
+      const db = mapProd.get(String(p.productId));
+
+      const price = Number(
+        p.precio ??
+        p.price ??
+        db?.pricing?.sale ??
+        db?.pricing?.list ??
+        0
+      );
+
+      const qty = Number(p.cantidad ?? 1);
+
+      return {
+
+        productId: p.productId,
+
+        title: p.title || db?.title,
+
+        sku: p.sku || db?.variants?.[0]?.sku,
+
+        price,
+
+        qty,
+
+        subtotal: price * qty
+
+      };
+
+    });
+
+    const itemsTotal = normItems.reduce(
+      (a,b)=>a+b.subtotal,
+      0
+    );
+
+    if (Math.round(itemsTotal) !== Math.round(total)) {
+      throw new Error("Total inconsistente");
+    }
+
+    const order = new Order({
+
+      items: normItems,
+
+      totals: {
+        items: itemsTotal,
+        grand: itemsTotal
+      },
+
+      payment: {
+        method: metodoPago,
+        status: "approved",
+        amount: itemsTotal
+      },
+
+      createdBy: vendedor
+
+    });
+
+    await order.save({ session });
+
+    await adjustStock(session, normItems, -1);
+
+    await session.commitTransaction();
+
+    res.status(201).json({
+      message: "Venta registrada",
+      order
+    });
+
+  } catch (error) {
+
     await session.abortTransaction();
-    res.status(500).json({ message: "Error al crear la orden", error: e.message || e.toString() });
+
+    res.status(500).json({
+      message: "Error al crear orden",
+      error: error.message
+    });
+
   } finally {
+
     session.endSession();
+
   }
+
 };
-
-
-
 
 
 
