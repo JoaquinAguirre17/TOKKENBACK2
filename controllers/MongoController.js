@@ -408,7 +408,10 @@ export const listOrders = async (req, res) => {
 export const obtenerVentasCierreCaja = async (req, res) => {
   try {
     const { fecha } = req.query;
-    if (!fecha) return res.status(400).json({ error: "Falta el parámetro fecha" });
+
+    if (!fecha) {
+      return res.status(400).json({ error: "Falta fecha" });
+    }
 
     const inicio = dayjs(fecha).startOf("day").toDate();
     const fin = dayjs(fecha).endOf("day").toDate();
@@ -419,84 +422,126 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       "payment.paidAt": { $gte: inicio, $lte: fin },
     }).lean();
 
-    const ventas = orders.map(o => {
+    const ventas = [];
+    const porVendedor = {};
+    const porMedioPago = {};
+    const porHora = {};
+    const productos = {};
+
+    let total = 0;
+
+    orders.forEach((o) => {
       const monto = Number(o?.totals?.grand || 0);
       const comision = monto * 0.02;
-      return {
+
+      const vendedor = o?.createdBy || "No especificado";
+      const medioPago = o?.payment?.method || "No especificado";
+      const fechaPago = o?.payment?.paidAt;
+
+      const hora = dayjs(fechaPago).format("HH");
+
+      ventas.push({
         id: String(o._id),
-        nombre: o.orderNumber || "Sin número",
+        nombre: o.orderNumber,
+        vendedor,
+        medioPago,
         monto,
         comision,
-        vendedor: o?.createdBy || o?.customer?.name || "No especificado",
-        metodoPago: o?.payment?.method || "No especificado",
-        fecha: dayjs(o.payment.paidAt).format("YYYY-MM-DD HH:mm"),
-      };
+        fecha: dayjs(fechaPago).format("YYYY-MM-DD"),
+        hora: dayjs(fechaPago).format("HH:mm"),
+      });
+
+      total += monto;
+
+      porVendedor[vendedor] = (porVendedor[vendedor] || 0) + monto;
+      porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + monto;
+      porHora[hora] = (porHora[hora] || 0) + monto;
+
+      o.items?.forEach((item) => {
+        const name = item.name || "Producto";
+        if (!productos[name]) {
+          productos[name] = { cantidad: 0, total: 0 };
+        }
+
+        productos[name].cantidad += item.qty;
+        productos[name].total += item.price * item.qty;
+      });
     });
 
-    res.json({ ventas });
-  } catch (e) {
-    res.status(500).json({ error: "Error al obtener ventas", message: e.message || e.toString() });
+    res.json({
+      ventas,
+      resumen: {
+        total,
+        comisiones: total * 0.02,
+        cantidadVentas: ventas.length,
+      },
+      porVendedor,
+      porMedioPago,
+      porHora,
+      productos,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Error al obtener cierre",
+      message: error.message,
+    });
   }
 };
 
 export const exportarVentasExcel = async (req, res) => {
   try {
-    const { ventas } = req.body;
-    if (!ventas || !ventas.length) return res.status(400).json({ error: "No hay ventas para exportar" });
+    const { ventas, resumen, porVendedor, porMedioPago } = req.body;
 
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("ventas");
+
+    const sheet = workbook.addWorksheet("Ventas");
 
     sheet.columns = [
       { header: "ID", key: "id", width: 25 },
-      { header: "Nombre", key: "nombre", width: 25 },
+      { header: "Nombre", key: "nombre", width: 20 },
       { header: "Vendedor", key: "vendedor", width: 20 },
       { header: "Medio Pago", key: "medioPago", width: 20 },
       { header: "Monto", key: "monto", width: 15 },
       { header: "Comisión", key: "comision", width: 15 },
-      { header: "Fecha", key: "fecha", width: 20 },
-      { header: "Hora", key: "hora", width: 10 }
+      { header: "Fecha", key: "fecha", width: 15 },
+      { header: "Hora", key: "hora", width: 10 },
     ];
 
-    ventas.forEach(v => {
-      sheet.addRow({
-        id: v.id,
-        nombre: v.nombre,
-        vendedor: v.vendedor,
-        medioPago: v.metodoPago,
-        monto: v.monto,
-        comision: v.comision,
-        fecha: v.fecha,
-        hora: v.hora,
-      });
+    ventas.forEach((v) => sheet.addRow(v));
+
+    const resumenSheet = workbook.addWorksheet("Resumen");
+
+    resumenSheet.addRow(["Total ventas", resumen.total]);
+    resumenSheet.addRow(["Comisiones", resumen.comisiones]);
+    resumenSheet.addRow(["Cantidad ventas", resumen.cantidadVentas]);
+
+    const vendedorSheet = workbook.addWorksheet("Por vendedor");
+
+    Object.entries(porVendedor).forEach(([v, total]) => {
+      vendedorSheet.addRow([v, total]);
     });
 
-    const resumenSheet = workbook.addWorksheet("resumen_vendedores");
-    const resume = ventas.reduce((acc, v) => {
-      if (!acc[v.vendedor]) acc[v.vendedor] = { total: 0, comision: 0 };
-      acc[v.vendedor].total += Number(v.monto || 0);
-      acc[v.vendedor].comision += Number(v.comision || 0);
-      return acc;
-    }, {});
+    const medioSheet = workbook.addWorksheet("Medios de pago");
 
-    resumenSheet.columns = [
-      { header: "Vendedor", key: "vendedor", width: 20 },
-      { header: "Total Vendido", key: "total", width: 20 },
-      { header: "Comisión Total", key: "comision", width: 20 },
-    ];
-
-    Object.entries(resume).forEach(([vendedor, data]) => {
-      resumenSheet.addRow({ vendedor, total: data.total, comision: data.comision });
+    Object.entries(porMedioPago).forEach(([m, total]) => {
+      medioSheet.addRow([m, total]);
     });
 
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", "attachment; filename=cierre_caja.xlsx");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=cierre_caja.xlsx"
+    );
 
     await workbook.xlsx.write(res);
+
     res.end();
-  } catch (err) {
-    console.error("Error exportando XLSX:", err);
-    res.status(500).json({ error: "Error al exportar XLSX" });
+  } catch (error) {
+    res.status(500).json({ error: "Error exportando Excel" });
   }
 };
 
