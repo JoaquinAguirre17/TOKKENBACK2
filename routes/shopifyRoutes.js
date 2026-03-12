@@ -22,7 +22,7 @@ router.get('/cierre-caja', shopifyController.obtenerVentasCierreCaja);
 router.get('/cierre-caja/excel', shopifyController.exportarVentasExcel);
 
 
-// Buscar productosss
+// Buscar productossse
 router.get('/products/search', shopifyController.searchProducts);
 
 module.exports = router;
