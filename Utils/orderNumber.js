@@ -1,23 +1,13 @@
-import Order from "../Models/Order.js";
+import Counter from "../Models/Counter.js";
 
-export const generateOrderNumber = async () => {
+export const nextOrderNumber = async () => {
 
-  const lastOrder = await Order
-    .findOne()
-    .sort({ createdAt: -1 });
+  const counter = await Counter.findOneAndUpdate(
+    { name: "order" },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
 
-  let next = 1;
-
-  if (lastOrder?.orderNumber) {
-
-    const num = parseInt(
-      lastOrder.orderNumber.replace("TOK-", "")
-    );
-
-    next = num + 1;
-
-  }
-
-  return `TOK-${String(next).padStart(6, "0")}`;
+  return `TOK-${String(counter.seq).padStart(6, "0")}`;
 
 };
