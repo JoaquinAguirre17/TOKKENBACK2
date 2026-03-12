@@ -18,5 +18,5 @@ const productSchema = new mongoose.Schema({
   status: { type: String, enum: ["active","draft","archived"], default: "active" }
 }, { timestamps: true });
 
-// 👇 Forzamos a usar la colección 'products'
+// 👇 Forzamos a usar la colección 'products x'
 export default mongoose.model("Product", productSchema, "products");
