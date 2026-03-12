@@ -146,26 +146,62 @@ export const createWebOrderMP = async (req, res) => {
  */
 export const adjustStock = async (session, items, sign = -1) => {
 
-  const operations = items.map(item => ({
+  const operations = [];
 
-    updateOne: {
+  for (const item of items) {
 
-      filter: {
-        _id: item.productId,
-        "variants.sku": item.sku
-      },
+    if (!item.productId) {
+      throw new Error("Item sin productId");
+    }
 
-      update: {
-        $inc: {
-          "variants.$.stock": item.qty * sign
+    // si hay SKU actualizamos variante
+    if (item.sku) {
+
+      operations.push({
+
+        updateOne: {
+
+          filter: {
+            _id: item.productId,
+            "variants.sku": item.sku
+          },
+
+          update: {
+            $inc: {
+              "variants.$.stock": item.qty * sign
+            }
+          }
+
         }
-      }
+
+      });
+
+    } else {
+
+      // fallback primera variante
+      operations.push({
+
+        updateOne: {
+
+          filter: { _id: item.productId },
+
+          update: {
+            $inc: {
+              "variants.0.stock": item.qty * sign
+            }
+          }
+
+        }
+
+      });
 
     }
 
-  }));
+  }
 
-  await Product.bulkWrite(operations, { session });
+  if (operations.length) {
+    await Product.bulkWrite(operations, { session });
+  }
 
 };
 /**
@@ -332,7 +368,7 @@ export const createOrder = async (req, res) => {
     });
 
     const itemsTotal = normItems.reduce(
-      (a,b)=>a+b.subtotal,
+      (a, b) => a + b.subtotal,
       0
     );
 
