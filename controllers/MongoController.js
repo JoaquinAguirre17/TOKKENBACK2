@@ -444,6 +444,7 @@ export const listOrders = async (req, res) => {
 
 export const obtenerVentasCierreCaja = async (req, res) => {
   try {
+
     const { fecha } = req.query;
 
     if (!fecha) {
@@ -456,7 +457,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const orders = await Order.find({
       channel: "pos",
       status: { $in: ["paid", "fulfilled"] },
-      "payment.paidAt": { $gte: inicio, $lte: fin },
+      "payment.paidAt": { $gte: inicio, $lte: fin }
     }).lean();
 
     const ventas = [];
@@ -468,9 +469,8 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     let total = 0;
 
     orders.forEach((o) => {
-      const monto = Number(o?.totals?.grand || 0);
-      const comision = monto * 0.02;
 
+      const monto = Number(o?.totals?.grand || 0);
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
       const fechaPago = o?.payment?.paidAt;
@@ -483,7 +483,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         vendedor,
         medioPago,
         monto,
-        comision,
+        comision: monto * 0.02,
         fecha: dayjs(fechaPago).format("YYYY-MM-DD"),
         hora: dayjs(fechaPago).format("HH:mm"),
       });
@@ -495,14 +495,21 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       porHora[hora] = (porHora[hora] || 0) + monto;
 
       o.items?.forEach((item) => {
-        const name = item.name || "Producto";
-        if (!productos[name]) {
-          productos[name] = { cantidad: 0, total: 0 };
+
+        const nombre = item.title || "Producto";
+
+        if (!productos[nombre]) {
+          productos[nombre] = {
+            cantidad: 0,
+            total: 0
+          };
         }
 
-        productos[name].cantidad += item.qty;
-        productos[name].total += item.price * item.qty;
+        productos[nombre].cantidad += item.qty || 1;
+        productos[nombre].total += (item.price || 0) * (item.qty || 1);
+
       });
+
     });
 
     res.json({
@@ -510,21 +517,23 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       resumen: {
         total,
         comisiones: total * 0.02,
-        cantidadVentas: ventas.length,
+        cantidadVentas: ventas.length
       },
       porVendedor,
       porMedioPago,
       porHora,
-      productos,
+      productos
     });
+
   } catch (error) {
+
     res.status(500).json({
       error: "Error al obtener cierre",
-      message: error.message,
+      message: error.message
     });
+
   }
 };
-
 export const exportarVentasExcel = async (req, res) => {
   try {
     const { ventas, resumen, porVendedor, porMedioPago } = req.body;
