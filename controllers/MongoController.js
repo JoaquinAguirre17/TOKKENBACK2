@@ -550,43 +550,199 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
 };
 export const exportarVentasExcel = async (req, res) => {
+
   try {
-    const { ventas, resumen, porVendedor, porMedioPago } = req.body;
+
+    const {
+      ventas,
+      resumen,
+      porVendedor,
+      porMedioPago,
+      porHora,
+      productos
+    } = req.body;
 
     const workbook = new ExcelJS.Workbook();
 
-    const sheet = workbook.addWorksheet("Ventas");
+    workbook.creator = "Sistema POS";
+    workbook.created = new Date();
 
-    sheet.columns = [
-      { header: "ID", key: "id", width: 25 },
-      { header: "Nombre", key: "nombre", width: 20 },
+    /* =========================
+       HOJA 1 - CIERRE DE CAJA
+    ========================= */
+
+    const cierre = workbook.addWorksheet("Cierre de caja");
+
+    cierre.mergeCells("A1:D1");
+
+    const titulo = cierre.getCell("A1");
+
+    titulo.value = "CIERRE DE CAJA";
+
+    titulo.font = { size: 18, bold: true };
+
+    titulo.alignment = { horizontal: "center" };
+
+    cierre.addRow([]);
+
+    cierre.addRow(["Total ventas", resumen.total]);
+    cierre.addRow(["Comisiones", resumen.comisiones]);
+    cierre.addRow(["Cantidad ventas", resumen.cantidadVentas]);
+
+    cierre.getColumn(1).width = 25;
+    cierre.getColumn(2).width = 20;
+
+    /* =========================
+       HOJA 2 - VENTAS
+    ========================= */
+
+    const ventasSheet = workbook.addWorksheet("Ventas");
+
+    ventasSheet.columns = [
+
+      { header: "Orden", key: "nombre", width: 15 },
       { header: "Vendedor", key: "vendedor", width: 20 },
       { header: "Medio Pago", key: "medioPago", width: 20 },
       { header: "Monto", key: "monto", width: 15 },
       { header: "Comisión", key: "comision", width: 15 },
       { header: "Fecha", key: "fecha", width: 15 },
       { header: "Hora", key: "hora", width: 10 },
+
     ];
 
-    ventas.forEach((v) => sheet.addRow(v));
+    ventas.forEach(v => ventasSheet.addRow(v));
 
-    const resumenSheet = workbook.addWorksheet("Resumen");
+    ventasSheet.getRow(1).font = { bold: true };
 
-    resumenSheet.addRow(["Total ventas", resumen.total]);
-    resumenSheet.addRow(["Comisiones", resumen.comisiones]);
-    resumenSheet.addRow(["Cantidad ventas", resumen.cantidadVentas]);
+    /* =========================
+       HOJA 3 - RANKING VENDEDORES
+    ========================= */
 
-    const vendedorSheet = workbook.addWorksheet("Por vendedor");
+    const vendedoresSheet = workbook.addWorksheet("Ranking vendedores");
 
-    Object.entries(porVendedor).forEach(([v, total]) => {
-      vendedorSheet.addRow([v, total]);
+    vendedoresSheet.columns = [
+
+      { header: "Vendedor", key: "vendedor", width: 20 },
+      { header: "Total vendido", key: "total", width: 20 },
+      { header: "Comisión 2%", key: "comision", width: 20 },
+
+    ];
+
+    const rankingVendedores = Object.entries(porVendedor)
+      .map(([vendedor, total]) => ({
+        vendedor,
+        total,
+        comision: total * 0.02
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    rankingVendedores.forEach(v =>
+      vendedoresSheet.addRow(v)
+    );
+
+    vendedoresSheet.getRow(1).font = { bold: true };
+
+    /* =========================
+       HOJA 4 - MEDIOS DE PAGO
+    ========================= */
+
+    const pagoSheet = workbook.addWorksheet("Medios de pago");
+
+    pagoSheet.columns = [
+
+      { header: "Medio", key: "medio", width: 20 },
+      { header: "Total", key: "total", width: 20 },
+
+    ];
+
+    Object.entries(porMedioPago).forEach(([medio, total]) => {
+
+      pagoSheet.addRow({
+        medio,
+        total
+      });
+
     });
 
-    const medioSheet = workbook.addWorksheet("Medios de pago");
+    pagoSheet.getRow(1).font = { bold: true };
 
-    Object.entries(porMedioPago).forEach(([m, total]) => {
-      medioSheet.addRow([m, total]);
+    /* =========================
+       HOJA 5 - VENTAS POR HORA
+    ========================= */
+
+    const horaSheet = workbook.addWorksheet("Ventas por hora");
+
+    horaSheet.columns = [
+
+      { header: "Hora", key: "hora", width: 15 },
+      { header: "Total vendido", key: "total", width: 20 },
+
+    ];
+
+    Object.entries(porHora).forEach(([hora, total]) => {
+
+      horaSheet.addRow({
+        hora,
+        total
+      });
+
     });
+
+    horaSheet.getRow(1).font = { bold: true };
+
+    /* =========================
+       HOJA 6 - PRODUCTOS
+    ========================= */
+
+    const productosSheet = workbook.addWorksheet("Productos vendidos");
+
+    productosSheet.columns = [
+
+      { header: "Producto", key: "nombre", width: 40 },
+      { header: "Cantidad", key: "cantidad", width: 15 },
+      { header: "Total vendido", key: "total", width: 20 },
+
+    ];
+
+    Object.entries(productos).forEach(([nombre, data]) => {
+
+      productosSheet.addRow({
+        nombre,
+        cantidad: data.cantidad,
+        total: data.total
+      });
+
+    });
+
+    productosSheet.getRow(1).font = { bold: true };
+
+    /* =========================
+       HOJA 7 - RANKING PRODUCTOS
+    ========================= */
+
+    const rankingSheet = workbook.addWorksheet("Ranking productos");
+
+    rankingSheet.columns = [
+
+      { header: "Producto", key: "nombre", width: 40 },
+      { header: "Cantidad vendida", key: "cantidad", width: 20 },
+
+    ];
+
+    const ranking = Object.entries(productos)
+      .map(([nombre, data]) => ({
+        nombre,
+        cantidad: data.cantidad
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad);
+
+    ranking.forEach(p => rankingSheet.addRow(p));
+
+    rankingSheet.getRow(1).font = { bold: true };
+
+    /* =========================
+       DESCARGA
+    ========================= */
 
     res.setHeader(
       "Content-Type",
@@ -595,15 +751,21 @@ export const exportarVentasExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=cierre_caja.xlsx"
+      "attachment; filename=reporte_cierre_caja.xlsx"
     );
 
     await workbook.xlsx.write(res);
 
     res.end();
+
   } catch (error) {
-    res.status(500).json({ error: "Error exportando Excel" });
+
+    res.status(500).json({
+      error: "Error exportando Excel"
+    });
+
   }
+
 };
 
 export const getOrderById = async (req, res) => {
