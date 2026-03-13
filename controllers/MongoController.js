@@ -7,19 +7,19 @@ import timezone from "dayjs/plugin/timezone.js";
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
-import Counter from "../Models/Counter.js"; // opcional (numeración)
+import Counter from "../Models/Counter.js";
 import { adjustStock } from "../Utils/adjustStock.js";
-import { generateOrderNumber  } from "../Utils/orderNumber.js";
+import { generateOrderNumber } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
-
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-dayjs.tz.setDefault("America/Argentina/Cordoba");
-// import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
+// zona horaria del sistema POS
+const TZ = "America/Argentina/Cordoba";
 
-// Mercado Pago (SDK moderno)
+// opcional: default global
+dayjs.tz.setDefault(TZ);
 import { MercadoPagoConfig, Preference } from "mercadopago";
 
 const mpClient = new Preference({ access_token: process.env.MP_ACCESS_TOKEN });
@@ -317,14 +317,12 @@ export const createOrder = async (req, res) => {
       const qty = Number(p.cantidad ?? 1);
 
       return {
-
         productId: db._id,
         title: db.title,
         sku: db?.variants?.[0]?.sku,
         price,
         qty,
         subtotal: price * qty
-
       };
 
     });
@@ -340,7 +338,8 @@ export const createOrder = async (req, res) => {
 
     const orderNumber = await generateOrderNumber();
 
-    const now = new Date();
+    // hora correcta Argentina
+    const now = dayjs().tz(TZ).toDate();
 
     const order = new Order({
 
@@ -397,7 +396,6 @@ export const createOrder = async (req, res) => {
 };
 
 
-
 export const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
   if (!draftOrderId || !action) return res.status(400).json({ message: "Faltan draftOrderId o action" });
@@ -450,6 +448,7 @@ export const listOrders = async (req, res) => {
   }
 };
 export const obtenerVentasCierreCaja = async (req, res) => {
+
   try {
 
     const { fecha } = req.query;
@@ -458,8 +457,9 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       return res.status(400).json({ error: "Falta fecha" });
     }
 
-    const inicio = dayjs(fecha).startOf("day").toDate();
-    const fin = dayjs(fecha).endOf("day").toDate();
+    // rango del día en Argentina
+    const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
+    const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
 
     const orders = await Order.find({
       "payment.status": "approved",
@@ -479,19 +479,23 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       const monto = Number(o?.totals?.grand || 0);
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
+
       const fechaPago = o?.createdAt;
 
-      const hora = dayjs(fechaPago).format("HH");
+      const hora = dayjs(fechaPago).tz(TZ).format("HH");
 
       ventas.push({
+
         id: String(o._id),
         nombre: o.orderNumber,
         vendedor,
         medioPago,
         monto,
         comision: monto * 0.02,
-        fecha: dayjs(fechaPago).format("YYYY-MM-DD"),
-        hora: dayjs(fechaPago).format("HH:mm"),
+
+        fecha: dayjs(fechaPago).tz(TZ).format("YYYY-MM-DD"),
+        hora: dayjs(fechaPago).tz(TZ).format("HH:mm"),
+
       });
 
       total += monto;
@@ -519,16 +523,20 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     });
 
     res.json({
+
       ventas,
+
       resumen: {
         total,
         comisiones: total * 0.02,
         cantidadVentas: ventas.length
       },
+
       porVendedor,
       porMedioPago,
       porHora,
       productos
+
     });
 
   } catch (error) {
@@ -539,6 +547,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     });
 
   }
+
 };
 export const exportarVentasExcel = async (req, res) => {
   try {
