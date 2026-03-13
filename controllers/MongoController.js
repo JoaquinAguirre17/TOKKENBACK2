@@ -2,6 +2,9 @@ import dayjs from "dayjs";
 import ExcelJS from "exceljs";
 import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
@@ -9,9 +12,7 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber  } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc.js";
-import timezone from "dayjs/plugin/timezone.js";
+
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
