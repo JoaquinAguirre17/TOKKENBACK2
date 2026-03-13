@@ -8,6 +8,7 @@ import Order from "../Models/Order.js";
 import Counter from "../Models/Counter.js"; // opcional (numeración)
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber  } from "../Utils/orderNumber.js";
+import { generateSKU } from "../Utils/generateSKU.js";
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
@@ -224,17 +225,30 @@ export const searchProducts = async (req, res) => {
 export const createProduct = async (req, res) => {
   try {
     const body = { ...req.body };
-    if (!body.title) return res.status(400).json({ error: "title es requerido" });
 
-    // if (!body.sku) body.sku = generateSKU(body.title, body.brand);
+    if (!body.title) {
+      return res.status(400).json({ error: "title es requerido" });
+    }
+
+    // generar SKU automático si no viene
+    if (!body.sku) {
+      body.sku = generateSKU(body.title, body.brand);
+    }
 
     const created = await Product.create(body);
+
     res.status(201).json(created);
+
   } catch (e) {
-    res.status(400).json({ error: e.message });
+
+    console.error("ERROR CREANDO PRODUCTO:", e);
+
+    res.status(400).json({
+      error: e.message
+    });
+
   }
 };
-
 export const updateProduct = async (req, res) => {
   try {
     const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
