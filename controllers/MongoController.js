@@ -441,7 +441,6 @@ export const listOrders = async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 };
-
 export const obtenerVentasCierreCaja = async (req, res) => {
   try {
 
@@ -455,9 +454,8 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const fin = dayjs(fecha).endOf("day").toDate();
 
     const orders = await Order.find({
-      channel: "pos",
-      status: { $in: ["paid", "fulfilled"] },
-      "payment.paidAt": { $gte: inicio, $lte: fin }
+      "payment.status": "approved",
+      createdAt: { $gte: inicio, $lte: fin }
     }).lean();
 
     const ventas = [];
@@ -473,7 +471,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       const monto = Number(o?.totals?.grand || 0);
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
-      const fechaPago = o?.payment?.paidAt;
+      const fechaPago = o?.createdAt;
 
       const hora = dayjs(fechaPago).format("HH");
 
@@ -499,10 +497,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         const nombre = item.title || "Producto";
 
         if (!productos[nombre]) {
-          productos[nombre] = {
-            cantidad: 0,
-            total: 0
-          };
+          productos[nombre] = { cantidad: 0, total: 0 };
         }
 
         productos[nombre].cantidad += item.qty || 1;
