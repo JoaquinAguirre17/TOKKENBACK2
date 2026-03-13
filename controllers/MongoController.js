@@ -7,7 +7,7 @@ import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
 import Counter from "../Models/Counter.js"; // opcional (numeración)
 import { adjustStock } from "../Utils/adjustStock.js";
-import { generateOrderNumber } from "../Utils/orderNumber.js"
+import { nextOrderNumber } from "../Utils/orderNumber.js";
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
