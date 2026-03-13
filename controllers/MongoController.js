@@ -9,6 +9,14 @@ import Counter from "../Models/Counter.js"; // opcional (numeración)
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber  } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+dayjs.tz.setDefault("America/Argentina/Cordoba");
 // import { generateSKU } from "../GeneradorSku/skuGenerator.js"; // si lo usás en otro lugar
 
 // Mercado Pago (SDK moderno)
@@ -497,7 +505,10 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         const nombre = item.title || "Producto";
 
         if (!productos[nombre]) {
-          productos[nombre] = { cantidad: 0, total: 0 };
+          productos[nombre] = {
+            cantidad: 0,
+            total: 0
+          };
         }
 
         productos[nombre].cantidad += item.qty || 1;
