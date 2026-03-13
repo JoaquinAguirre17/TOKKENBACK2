@@ -319,15 +319,10 @@ export const createOrder = async (req, res) => {
       return {
 
         productId: db._id,
-
         title: db.title,
-
         sku: db?.variants?.[0]?.sku,
-
         price,
-
         qty,
-
         subtotal: price * qty
 
       };
@@ -345,6 +340,8 @@ export const createOrder = async (req, res) => {
 
     const orderNumber = await generateOrderNumber();
 
+    const now = new Date();
+
     const order = new Order({
 
       orderNumber,
@@ -359,10 +356,13 @@ export const createOrder = async (req, res) => {
       payment: {
         method: metodoPago,
         status: "approved",
-        amount: itemsTotal
+        amount: itemsTotal,
+        paidAt: now
       },
 
-      createdBy: vendedor
+      createdBy: vendedor,
+
+      createdAt: now
 
     });
 
