@@ -1,6 +1,6 @@
-import Counter from "../Models/Counter.js";
+import Counter from "../Models/Counter.js"; 
 
-export const nextOrderNumber = async () => {
+export const generateOrderNumber  = async () => {
 
   const counter = await Counter.findOneAndUpdate(
     { name: "order" },
