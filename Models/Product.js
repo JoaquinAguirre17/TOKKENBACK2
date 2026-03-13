@@ -27,14 +27,15 @@ const productSchema = new mongoose.Schema({
       alt: String
     }
   ],
-
-  variants: [
-    {
-      sku: String,
-      stock: { type: Number, default: 0 },
-      price: Number
-    }
-  ],
+variants: [
+  {
+    sku: String,
+    stock: { type: Number, default: 0 },
+    stockMinimo: { type: Number, default: 5 }, // cantidad mínima antes de alertar
+    stockIdeal: { type: Number, default: 10 }, // cantidad que debería haber
+    price: Number
+  }
+],
 
   status: {
     type: String,
