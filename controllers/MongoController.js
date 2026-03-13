@@ -549,6 +549,102 @@ export const obtenerVentasCierreCaja = async (req, res) => {
   }
 
 };
+// Obtener ventas por mes
+export const obtenerVentasPorMes = async (req, res) => {
+  try {
+    let { mes, anio } = req.query;
+
+    if (!mes || !anio) return res.status(400).json({ error: "Falta mes o año" });
+
+    mes = parseInt(mes); // 1-12
+    anio = parseInt(anio);
+
+    const inicio = dayjs(`${anio}-${mes}-01`).startOf("month").toDate();
+    const fin = dayjs(`${anio}-${mes}-01`).endOf("month").toDate();
+
+    const orders = await Order.find({
+      "payment.status": "approved",
+      createdAt: { $gte: inicio, $lte: fin }
+    }).lean();
+
+    const data = procesarVentas(orders, true); // true = incluir ventas por día
+
+    res.json(data);
+
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener ventas por mes", message: error.message });
+  }
+};
+
+// Función de procesamiento de ventas
+function procesarVentas(orders, incluirPorDia = false) {
+
+  const ventas = [];
+  const porVendedor = {};
+  const porMedioPago = {};
+  const porHora = {};
+  const productos = {};
+  const porDia = {}; // para ventas por día del mes
+
+  let total = 0;
+
+  orders.forEach(o => {
+
+    const monto = Number(o?.totals?.grand || 0);
+    const vendedor = o?.createdBy || "No especificado";
+    const medioPago = o?.payment?.method || "No especificado";
+    const fechaPago = o?.createdAt;
+
+    const hora = dayjs(fechaPago).format("HH");
+
+    ventas.push({
+      id: String(o._id),
+      nombre: o.orderNumber,
+      vendedor,
+      medioPago,
+      monto,
+      comision: monto * 0.02,
+      fecha: dayjs(fechaPago).format("YYYY-MM-DD"),
+      hora: dayjs(fechaPago).format("HH:mm"),
+    });
+
+    total += monto;
+
+    porVendedor[vendedor] = (porVendedor[vendedor] || 0) + monto;
+    porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + monto;
+    porHora[hora] = (porHora[hora] || 0) + monto;
+
+    if (incluirPorDia) {
+      const dia = dayjs(fechaPago).format("YYYY-MM-DD");
+      porDia[dia] = (porDia[dia] || 0) + monto;
+    }
+
+    o.items?.forEach(item => {
+
+      const nombre = item.title || "Producto";
+
+      if (!productos[nombre]) {
+        productos[nombre] = { cantidad: 0, total: 0 };
+      }
+
+      productos[nombre].cantidad += item.qty || 1;
+      productos[nombre].total += (item.price || 0) * (item.qty || 1);
+
+    });
+
+  });
+
+  const resumen = {
+    total,
+    comisiones: total * 0.02,
+    cantidadVentas: ventas.length
+  };
+
+  return incluirPorDia
+    ? { ventas, resumen, porVendedor, porMedioPago, porHora, productos, porDia }
+    : { ventas, resumen, porVendedor, porMedioPago, porHora, productos };
+
+}
 export const exportarVentasExcel = async (req, res) => {
 
   try {
