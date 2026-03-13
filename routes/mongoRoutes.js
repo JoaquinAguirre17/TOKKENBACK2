@@ -16,6 +16,7 @@ import {
   downloadOrderPDF,
   obtenerVentasCierreCaja,
   exportarVentasExcel,
+  obtenerVentasPorMes,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -36,6 +37,7 @@ router.post("/orders/web-mp", createWebOrderMP);
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
+router.get("/orders/cierre-mes", obtenerVentasPorMes);
 
 // POS / admin
 router.post("/orders", createOrder);               
