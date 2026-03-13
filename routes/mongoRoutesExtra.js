@@ -8,6 +8,7 @@ import {
   confirmOrder,
   obtenerVentasCierreCaja,
   exportarVentasExcel,
+  obtenerVentasPorMes,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -20,9 +21,11 @@ router.get("/products/search", searchProducts);
 // Órdenes
 router.post("/orders", createOrder);
 router.post("/orders/confirm", confirmOrder);
+router.get("/orders/cierre-mes",obtenerVentasPorMes);
 
 // Reportes
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
+
 
 export default router;
