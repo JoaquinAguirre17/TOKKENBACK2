@@ -449,47 +449,37 @@ export const listOrders = async (req, res) => {
   }
 };
 export const obtenerVentasCierreCaja = async (req, res) => {
-
   try {
-
     const { fecha } = req.query;
+    if (!fecha) return res.status(400).json({ error: "Falta fecha" });
 
-    if (!fecha) {
-      return res.status(400).json({ error: "Falta fecha" });
-    }
-
-    // rango del día en Argentina
     const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
     const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
 
-    // 🟢 VENTAS
+    // 🔵 Ventas
     const orders = await Order.find({
       "payment.status": "approved",
-      createdAt: { $gte: inicio, $lte: fin }
+      createdAt: { $gte: inicio, $lte: fin },
     }).lean();
 
-    // 🟣 INGRESOS (NUEVO)
+    // 🟢 Ingresos
     const ingresosDB = await Ingreso.find({
-      createdAt: { $gte: inicio, $lte: fin }
+      createdAt: { $gte: inicio, $lte: fin },
     }).lean();
 
+    // 🔹 Procesar ventas
     const ventas = [];
     const porVendedor = {};
     const porMedioPago = {};
     const porHora = {};
     const productos = {};
+    let totalVentas = 0;
 
-    let total = 0;
-
-    // 🔵 PROCESAR VENTAS
     orders.forEach((o) => {
-
       const monto = Number(o?.totals?.grand || 0);
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
-
       const fechaPago = o?.createdAt;
-
       const hora = dayjs(fechaPago).tz(TZ).format("HH");
 
       ventas.push({
@@ -503,76 +493,46 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         hora: dayjs(fechaPago).tz(TZ).format("HH:mm"),
       });
 
-      total += monto;
-
+      totalVentas += monto;
       porVendedor[vendedor] = (porVendedor[vendedor] || 0) + monto;
       porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + monto;
       porHora[hora] = (porHora[hora] || 0) + monto;
 
       o.items?.forEach((item) => {
-
         const nombre = item.title || "Producto";
-
-        if (!productos[nombre]) {
-          productos[nombre] = {
-            cantidad: 0,
-            total: 0
-          };
-        }
-
+        if (!productos[nombre]) productos[nombre] = { cantidad: 0, total: 0 };
         productos[nombre].cantidad += item.qty || 1;
         productos[nombre].total += (item.price || 0) * (item.qty || 1);
-
       });
-
     });
 
-    // 🟣 TOTAL INGRESOS
-    let totalIngresos = 0;
-
-    ingresosDB.forEach(i => {
-      totalIngresos += i.total || 0;
+    // 🔹 Procesar productos ingresados
+    const productosIngresados = {};
+    ingresosDB.forEach((ingreso) => {
+      ingreso.items.forEach((item) => {
+        const nombre = item.title || "Producto";
+        if (!productosIngresados[nombre]) productosIngresados[nombre] = { cantidad: 0 };
+        productosIngresados[nombre].cantidad += item.quantity;
+      });
     });
 
-    // 🟣 FORMATEAR INGRESOS (opcional pero útil para Excel)
-    const ingresos = ingresosDB.map(i => ({
-      fecha: dayjs(i.createdAt).tz(TZ).format("YYYY-MM-DD HH:mm"),
-      total: i.total
-    }));
-
-    // ✅ RESPONSE FINAL
     res.json({
-
       ventas,
-
-      ingresos, // 👈 NUEVO
-
       resumen: {
-        total,
-        comisiones: total * 0.02,
+        total: totalVentas,
+        comisiones: totalVentas * 0.02,
         cantidadVentas: ventas.length,
-        ingresos: totalIngresos, // 👈 NUEVO
-        balance: total - totalIngresos // 👈 NUEVO
       },
-
       porVendedor,
       porMedioPago,
       porHora,
-      productos
-
+      productos,
+      productosIngresados, // 👈 NUEVO
     });
-
   } catch (error) {
-
     console.error("❌ Error cierre caja:", error);
-
-    res.status(500).json({
-      error: "Error al obtener cierre",
-      message: error.message
-    });
-
+    res.status(500).json({ error: "Error al obtener cierre", message: error.message });
   }
-
 };
 // Obtener ventas por mes
 export const obtenerVentasPorMes = async (req, res) => {
