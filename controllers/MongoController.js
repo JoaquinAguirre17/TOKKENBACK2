@@ -1010,65 +1010,38 @@ export const downloadOrderPDF = async (req, res) => {
 export const crearIngreso = async (req, res) => {
   try {
     const { items } = req.body;
-
-    // 🧪 VALIDACIÓN
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ error: "No hay productos" });
-    }
 
     let total = 0;
 
     for (const item of items) {
-
       const { productId, quantity, costPrice } = item;
+      if (!productId || quantity <= 0 || costPrice <= 0)
+        return res.status(400).json({ error: "Datos inválidos en items" });
 
-      if (!productId || quantity <= 0 || costPrice <= 0) {
-        return res.status(400).json({
-          error: "Datos inválidos en items"
-        });
-      }
-
-      // 🔍 BUSCAR PRODUCTO
       const product = await Product.findById(productId);
+      if (!product) return res.status(404).json({ error: `Producto no encontrado: ${productId}` });
 
-      if (!product) {
-        return res.status(404).json({
-          error: `Producto no encontrado: ${productId}`
-        });
-      }
-
-      // ⚠️ VALIDAR VARIANT
+      // Crear variante si no existe
       if (!product.variants || product.variants.length === 0) {
-        return res.status(400).json({
-          error: `Producto sin variantes: ${product.title}`
-        });
+        product.variants = [{ sku: product.sku, stock: 0, stockMinimo: 5, stockIdeal: 10, price: 0 }];
       }
 
-      // 📦 ACTUALIZAR STOCK
-      product.variants[0].stock += Number(quantity);
-
+      // Actualizar stock
+      product.variants[0].stock = Number(product.variants[0].stock || 0) + Number(quantity);
       await product.save();
 
       total += quantity * costPrice;
     }
 
-    // 🧾 GUARDAR INGRESO
-    const ingreso = new Ingreso({
-      items,
-      total
-    });
-
+    // Guardar ingreso
+    const ingreso = new Ingreso({ items, total });
     await ingreso.save();
 
-    res.json({
-      ok: true,
-      ingreso
-    });
-
+    res.json({ ok: true, ingreso });
   } catch (error) {
     console.error("❌ Error crearIngreso:", error);
-    res.status(500).json({
-      error: "Error interno del servidor"
-    });
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 };
