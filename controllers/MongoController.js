@@ -456,18 +456,18 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
     const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
 
-    // 🔵 Ventas
+    // Ventas
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: inicio, $lte: fin },
     }).lean();
 
-    // 🟢 Ingresos
+    // Ingresos
     const ingresosDB = await Ingreso.find({
       createdAt: { $gte: inicio, $lte: fin },
     }).lean();
 
-    // 🔹 Procesar ventas
+    // Procesar ventas
     const ventas = [];
     const porVendedor = {};
     const porMedioPago = {};
@@ -506,13 +506,15 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       });
     });
 
-    // 🔹 Procesar productos ingresados
-    const productosIngresados = {};
+    // 🔹 Productos ingresados con fecha/hora
+    const productosIngresados = [];
     ingresosDB.forEach((ingreso) => {
       ingreso.items.forEach((item) => {
-        const nombre = item.title || "Producto";
-        if (!productosIngresados[nombre]) productosIngresados[nombre] = { cantidad: 0 };
-        productosIngresados[nombre].cantidad += item.quantity;
+        productosIngresados.push({
+          nombre: item.title || "Producto",
+          cantidad: item.quantity,
+          fecha: dayjs(ingreso.createdAt).tz(TZ).format("YYYY-MM-DD HH:mm"),
+        });
       });
     });
 
@@ -527,7 +529,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       porMedioPago,
       porHora,
       productos,
-      productosIngresados, // 👈 NUEVO
+      productosIngresados, // 👈 cada producto con fecha/hora
     });
   } catch (error) {
     console.error("❌ Error cierre caja:", error);
