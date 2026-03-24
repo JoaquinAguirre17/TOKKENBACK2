@@ -11,6 +11,7 @@ import Counter from "../Models/Counter.js";
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
+import Ingreso from "../Models/Ingreso.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -461,8 +462,14 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
     const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
 
+    // 🟢 VENTAS
     const orders = await Order.find({
       "payment.status": "approved",
+      createdAt: { $gte: inicio, $lte: fin }
+    }).lean();
+
+    // 🟣 INGRESOS (NUEVO)
+    const ingresosDB = await Ingreso.find({
       createdAt: { $gte: inicio, $lte: fin }
     }).lean();
 
@@ -474,6 +481,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
     let total = 0;
 
+    // 🔵 PROCESAR VENTAS
     orders.forEach((o) => {
 
       const monto = Number(o?.totals?.grand || 0);
@@ -485,17 +493,14 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       const hora = dayjs(fechaPago).tz(TZ).format("HH");
 
       ventas.push({
-
         id: String(o._id),
         nombre: o.orderNumber,
         vendedor,
         medioPago,
         monto,
         comision: monto * 0.02,
-
         fecha: dayjs(fechaPago).tz(TZ).format("YYYY-MM-DD"),
         hora: dayjs(fechaPago).tz(TZ).format("HH:mm"),
-
       });
 
       total += monto;
@@ -522,14 +527,32 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
     });
 
+    // 🟣 TOTAL INGRESOS
+    let totalIngresos = 0;
+
+    ingresosDB.forEach(i => {
+      totalIngresos += i.total || 0;
+    });
+
+    // 🟣 FORMATEAR INGRESOS (opcional pero útil para Excel)
+    const ingresos = ingresosDB.map(i => ({
+      fecha: dayjs(i.createdAt).tz(TZ).format("YYYY-MM-DD HH:mm"),
+      total: i.total
+    }));
+
+    // ✅ RESPONSE FINAL
     res.json({
 
       ventas,
 
+      ingresos, // 👈 NUEVO
+
       resumen: {
         total,
         comisiones: total * 0.02,
-        cantidadVentas: ventas.length
+        cantidadVentas: ventas.length,
+        ingresos: totalIngresos, // 👈 NUEVO
+        balance: total - totalIngresos // 👈 NUEVO
       },
 
       porVendedor,
@@ -540,6 +563,8 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     });
 
   } catch (error) {
+
+    console.error("❌ Error cierre caja:", error);
 
     res.status(500).json({
       error: "Error al obtener cierre",
@@ -554,7 +579,9 @@ export const obtenerVentasPorMes = async (req, res) => {
   try {
     let { mes, anio } = req.query;
 
-    if (!mes || !anio) return res.status(400).json({ error: "Falta mes o año" });
+    if (!mes || !anio) {
+      return res.status(400).json({ error: "Falta mes o año" });
+    }
 
     mes = parseInt(mes); // 1-12
     anio = parseInt(anio);
@@ -562,17 +589,52 @@ export const obtenerVentasPorMes = async (req, res) => {
     const inicio = dayjs(`${anio}-${mes}-01`).startOf("month").toDate();
     const fin = dayjs(`${anio}-${mes}-01`).endOf("month").toDate();
 
+    // 🟢 VENTAS
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: inicio, $lte: fin }
     }).lean();
 
-    const data = procesarVentas(orders, true); // true = incluir ventas por día
+    const data = procesarVentas(orders, true);
 
-    res.json(data);
+    // 🟣 INGRESOS
+    const ingresosDB = await Ingreso.find({
+      createdAt: { $gte: inicio, $lte: fin }
+    }).lean();
+
+    let totalIngresos = 0;
+
+    ingresosDB.forEach(i => {
+      totalIngresos += i.total || 0;
+    });
+
+    // 🟣 FORMATEO OPCIONAL
+    const ingresos = ingresosDB.map(i => ({
+      fecha: dayjs(i.createdAt).format("YYYY-MM-DD"),
+      total: i.total
+    }));
+
+    // 💥 AGREGAMOS AL RESPONSE
+    res.json({
+      ...data,
+
+      ingresos, // 👈 listado
+
+      resumen: {
+        ...data.resumen,
+        ingresos: totalIngresos,
+        balance: (data.resumen?.total || 0) - totalIngresos
+      }
+
+    });
 
   } catch (error) {
-    res.status(500).json({ error: "Error al obtener ventas por mes", message: error.message });
+    console.error("❌ Error ventas por mes:", error);
+
+    res.status(500).json({
+      error: "Error al obtener ventas por mes",
+      message: error.message
+    });
   }
 };
 
@@ -655,13 +717,17 @@ export const exportarVentasExcel = async (req, res) => {
       porVendedor,
       porMedioPago,
       porHora,
-      productos
+      productos,
+      ingresos = [] // 🟣 NUEVO
     } = req.body;
 
     const workbook = new ExcelJS.Workbook();
 
     workbook.creator = "Sistema POS";
     workbook.created = new Date();
+
+    const totalIngresos = ingresos.reduce((acc, i) => acc + (i.total || 0), 0);
+    const balance = (resumen.total || 0) - totalIngresos;
 
     /* =========================
        HOJA 1 - CIERRE DE CAJA
@@ -682,6 +748,8 @@ export const exportarVentasExcel = async (req, res) => {
     cierre.addRow([]);
 
     cierre.addRow(["Total ventas", resumen.total]);
+    cierre.addRow(["Total ingresos", totalIngresos]); // 🟣 NUEVO
+    cierre.addRow(["Balance", balance]); // 🟣 NUEVO
     cierre.addRow(["Comisiones", resumen.comisiones]);
     cierre.addRow(["Cantidad ventas", resumen.cantidadVentas]);
 
@@ -711,7 +779,29 @@ export const exportarVentasExcel = async (req, res) => {
     ventasSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 3 - RANKING VENDEDORES
+       HOJA 3 - INGRESOS 🟣
+    ========================= */
+
+    const ingresosSheet = workbook.addWorksheet("Ingresos");
+
+    ingresosSheet.columns = [
+      { header: "Fecha", key: "fecha", width: 15 },
+      { header: "Descripción", key: "descripcion", width: 30 },
+      { header: "Total", key: "total", width: 20 },
+    ];
+
+    ingresos.forEach(i => {
+      ingresosSheet.addRow({
+        fecha: i.fecha,
+        descripcion: i.descripcion || "-",
+        total: i.total
+      });
+    });
+
+    ingresosSheet.getRow(1).font = { bold: true };
+
+    /* =========================
+       HOJA 4 - RANKING VENDEDORES
     ========================= */
 
     const vendedoresSheet = workbook.addWorksheet("Ranking vendedores");
@@ -739,7 +829,7 @@ export const exportarVentasExcel = async (req, res) => {
     vendedoresSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 4 - MEDIOS DE PAGO
+       HOJA 5 - MEDIOS DE PAGO
     ========================= */
 
     const pagoSheet = workbook.addWorksheet("Medios de pago");
@@ -763,7 +853,7 @@ export const exportarVentasExcel = async (req, res) => {
     pagoSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 5 - VENTAS POR HORA
+       HOJA 6 - VENTAS POR HORA
     ========================= */
 
     const horaSheet = workbook.addWorksheet("Ventas por hora");
@@ -787,7 +877,7 @@ export const exportarVentasExcel = async (req, res) => {
     horaSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 6 - PRODUCTOS
+       HOJA 7 - PRODUCTOS
     ========================= */
 
     const productosSheet = workbook.addWorksheet("Productos vendidos");
@@ -813,7 +903,7 @@ export const exportarVentasExcel = async (req, res) => {
     productosSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 7 - RANKING PRODUCTOS
+       HOJA 8 - RANKING PRODUCTOS
     ========================= */
 
     const rankingSheet = workbook.addWorksheet("Ranking productos");
@@ -855,6 +945,8 @@ export const exportarVentasExcel = async (req, res) => {
     res.end();
 
   } catch (error) {
+
+    console.error("❌ Error exportando Excel:", error);
 
     res.status(500).json({
       error: "Error exportando Excel"
@@ -913,5 +1005,70 @@ export const downloadOrderPDF = async (req, res) => {
     doc.end();
   } catch (error) {
     res.status(500).json({ message: "Error al generar el PDF", error });
+  }
+};
+export const crearIngreso = async (req, res) => {
+  try {
+    const { items } = req.body;
+
+    // 🧪 VALIDACIÓN
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "No hay productos" });
+    }
+
+    let total = 0;
+
+    for (const item of items) {
+
+      const { productId, quantity, costPrice } = item;
+
+      if (!productId || quantity <= 0 || costPrice <= 0) {
+        return res.status(400).json({
+          error: "Datos inválidos en items"
+        });
+      }
+
+      // 🔍 BUSCAR PRODUCTO
+      const product = await Product.findById(productId);
+
+      if (!product) {
+        return res.status(404).json({
+          error: `Producto no encontrado: ${productId}`
+        });
+      }
+
+      // ⚠️ VALIDAR VARIANT
+      if (!product.variants || product.variants.length === 0) {
+        return res.status(400).json({
+          error: `Producto sin variantes: ${product.title}`
+        });
+      }
+
+      // 📦 ACTUALIZAR STOCK
+      product.variants[0].stock += Number(quantity);
+
+      await product.save();
+
+      total += quantity * costPrice;
+    }
+
+    // 🧾 GUARDAR INGRESO
+    const ingreso = new Ingreso({
+      items,
+      total
+    });
+
+    await ingreso.save();
+
+    res.json({
+      ok: true,
+      ingreso
+    });
+
+  } catch (error) {
+    console.error("❌ Error crearIngreso:", error);
+    res.status(500).json({
+      error: "Error interno del servidor"
+    });
   }
 };
