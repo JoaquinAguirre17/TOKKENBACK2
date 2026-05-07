@@ -1019,14 +1019,15 @@ export const crearIngreso = async (req, res) => {
 
 export const importarExcel = async (req, res) => {
   try {
-    // Verificar archivo
+    // 1. Verificar archivo
     if (!req.file) {
       return res.status(400).json({
+        ok: false,
         error: "No se subió ningún archivo",
       });
     }
 
-    // Validar extensión
+    // 2. Validar extensión
     const extension = req.file.originalname
       .split(".")
       .pop()
@@ -1036,48 +1037,43 @@ export const importarExcel = async (req, res) => {
 
     if (!extensionesPermitidas.includes(extension)) {
       return res.status(400).json({
+        ok: false,
         error: "Solo se permiten archivos Excel (.xlsx o .xls)",
       });
     }
 
-    // Leer Excel
+    // 3. Leer Excel
     const workbook = XLSX.read(req.file.buffer, {
       type: "buffer",
     });
 
-    // Obtener primera hoja
     const sheetName = workbook.SheetNames[0];
-
     const sheet = workbook.Sheets[sheetName];
 
-    // Convertir Excel → JSON
     const productos = XLSX.utils.sheet_to_json(sheet);
 
-    // Validar contenido
+    // 4. Validar contenido
     if (!productos.length) {
       return res.status(400).json({
+        ok: false,
         error: "El Excel está vacío",
       });
     }
 
-    // Formatear productos según tu schema
+    // 5. Formatear productos
     const productosFormateados = productos.map((p) => ({
       sku: p.sku?.toString().trim(),
-
       title: p.title?.toString().trim(),
-
       description: p.description?.toString().trim() || "",
-
       brand: p.brand?.toString().trim() || "",
-
       category: p.category?.toString().trim() || "",
 
-      // Tags separados por coma
       tags: p.tags
         ? p.tags
+            .toString()
             .split(",")
             .map((tag) => tag.trim())
-            .filter((tag) => tag.length > 0)
+            .filter(Boolean)
         : [],
 
       pricing: {
@@ -1086,16 +1082,16 @@ export const importarExcel = async (req, res) => {
         taxIncluded: true,
       },
 
+      images: p.image
+        ? [{ url: p.image, alt: p.title || "" }]
+        : [],
+
       variants: [
         {
           sku: p.sku?.toString().trim(),
-
           stock: Number(p.stock) || 0,
-
-          stockMinimo: 5,
-
-          stockIdeal: 10,
-
+          stockMinimo: Number(p.stockMinimo) || 5,
+          stockIdeal: Number(p.stockIdeal) || 10,
           price: Number(p.price) || 0,
         },
       ],
@@ -1103,39 +1099,55 @@ export const importarExcel = async (req, res) => {
       status: "active",
     }));
 
-    // Filtrar productos válidos
+    // 6. Filtrar inválidos
     const productosValidos = productosFormateados.filter(
       (p) =>
         p.sku &&
         p.title &&
-        p.pricing.list >= 0
+        typeof p.pricing.list === "number"
     );
 
     if (!productosValidos.length) {
       return res.status(400).json({
+        ok: false,
         error: "No hay productos válidos para importar",
       });
     }
 
-    // Insertar o actualizar productos
+    // 7. IMPORTANTE: insertar/actualizar correctamente
+    let insertados = 0;
+    let actualizados = 0;
+
     for (const producto of productosValidos) {
-      await Product.updateOne(
+      const result = await Product.updateOne(
         { sku: producto.sku },
-        { $set: producto },
+        {
+          $set: producto,
+        },
         { upsert: true }
       );
+
+      if (result.upsertedCount > 0) {
+        insertados++;
+      } else {
+        actualizados++;
+      }
     }
 
-    res.status(200).json({
+    // 8. Respuesta real
+    return res.status(200).json({
       ok: true,
       total: productosValidos.length,
-      msg: "Productos importados correctamente",
+      insertados,
+      actualizados,
+      msg: "Importación completada correctamente",
     });
 
   } catch (error) {
-    console.log(error);
+    console.log("IMPORT ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
+      ok: false,
       error: "Error al importar Excel",
     });
   }
