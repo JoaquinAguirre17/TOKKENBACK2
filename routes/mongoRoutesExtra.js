@@ -55,11 +55,7 @@ router.get(
 );
 
 // Importar productos Excel
-router.post(
-  "/products/import-excel",
-  upload.single("archivo"),
-  importarExcel
-);
+
 
 // =========================
 // ÓRDENES

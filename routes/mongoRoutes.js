@@ -19,6 +19,7 @@ import {
   obtenerVentasPorMes,
   crearIngreso,
   exportarProductosExcel,
+  importarExcel,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -56,6 +57,12 @@ router.get("/orders/:id", getOrderById);
 // Listado general
 router.get("/orders", listOrders);
 
+//Importar productos Excel
+router.post(
+  "/products/import-excel",
+  upload.single("archivo"),
+  importarExcel
+);
 
 
 export default router;
