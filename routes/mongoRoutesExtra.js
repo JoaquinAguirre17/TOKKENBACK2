@@ -11,7 +11,8 @@ import {
   obtenerVentasCierreCaja,
   exportarVentasExcel,
   obtenerVentasPorMes,
-  importarExcel, // 👈 AGREGAR
+  importarExcel,
+  exportarProductosExcel, // 👈 AGREGAR
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
