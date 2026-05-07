@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
+const XLSX = require("xlsx");
+const Product = require("../Models/Product");
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
@@ -1012,5 +1014,193 @@ export const crearIngreso = async (req, res) => {
   } catch (error) {
     console.error("❌ Error crearIngreso:", error);
     res.status(500).json({ error: "Error interno del servidor" });
+  }
+};
+
+export const importarExcel = async (req, res) => {
+  try {
+    // Verificar archivo
+    if (!req.file) {
+      return res.status(400).json({
+        error: "No se subió ningún archivo",
+      });
+    }
+
+    // Validar extensión
+    const extension = req.file.originalname
+      .split(".")
+      .pop()
+      .toLowerCase();
+
+    const extensionesPermitidas = ["xlsx", "xls"];
+
+    if (!extensionesPermitidas.includes(extension)) {
+      return res.status(400).json({
+        error: "Solo se permiten archivos Excel (.xlsx o .xls)",
+      });
+    }
+
+    // Leer Excel
+    const workbook = XLSX.read(req.file.buffer, {
+      type: "buffer",
+    });
+
+    // Obtener primera hoja
+    const sheetName = workbook.SheetNames[0];
+
+    const sheet = workbook.Sheets[sheetName];
+
+    // Convertir Excel → JSON
+    const productos = XLSX.utils.sheet_to_json(sheet);
+
+    // Validar contenido
+    if (!productos.length) {
+      return res.status(400).json({
+        error: "El Excel está vacío",
+      });
+    }
+
+    // Formatear productos según tu schema
+    const productosFormateados = productos.map((p) => ({
+      sku: p.sku?.toString().trim(),
+
+      title: p.title?.toString().trim(),
+
+      description: p.description?.toString().trim() || "",
+
+      brand: p.brand?.toString().trim() || "",
+
+      category: p.category?.toString().trim() || "",
+
+      // Tags separados por coma
+      tags: p.tags
+        ? p.tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0)
+        : [],
+
+      pricing: {
+        currency: "ARS",
+        list: Number(p.price) || 0,
+        taxIncluded: true,
+      },
+
+      variants: [
+        {
+          sku: p.sku?.toString().trim(),
+
+          stock: Number(p.stock) || 0,
+
+          stockMinimo: 5,
+
+          stockIdeal: 10,
+
+          price: Number(p.price) || 0,
+        },
+      ],
+
+      status: "active",
+    }));
+
+    // Filtrar productos válidos
+    const productosValidos = productosFormateados.filter(
+      (p) =>
+        p.sku &&
+        p.title &&
+        p.pricing.list >= 0
+    );
+
+    if (!productosValidos.length) {
+      return res.status(400).json({
+        error: "No hay productos válidos para importar",
+      });
+    }
+
+    // Insertar o actualizar productos
+    for (const producto of productosValidos) {
+      await Product.updateOne(
+        { sku: producto.sku },
+        { $set: producto },
+        { upsert: true }
+      );
+    }
+
+    res.status(200).json({
+      ok: true,
+      total: productosValidos.length,
+      msg: "Productos importados correctamente",
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      error: "Error al importar Excel",
+    });
+  }
+};
+export const exportarProductosExcel = async (req, res) => {
+  try {
+    // Obtener productos
+    const products = await Product.find();
+
+    // Transformar productos para Excel
+    const productosExcel = products.map((p) => ({
+      sku: p.sku || "",
+
+      title: p.title || "",
+
+      description: p.description || "",
+
+      brand: p.brand || "",
+
+      category: p.category || "",
+
+      tags: p.tags?.join(",") || "",
+
+      stock: p.variants?.[0]?.stock || 0,
+
+      price: p.pricing?.list || 0,
+    }));
+
+    // Crear hoja
+    const worksheet = XLSX.utils.json_to_sheet(productosExcel);
+
+    // Crear libro
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "Productos"
+    );
+
+    // Generar buffer
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "buffer",
+    });
+
+    // Headers descarga
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=productos.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    // Enviar archivo
+    res.send(excelBuffer);
+
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      error: "Error al exportar productos",
+    });
   }
 };
