@@ -27,6 +27,10 @@ const router = express.Router();
 router.get("/products", getProducts);
 router.get("/products/search", searchProducts);
 router.get("/products/slug/:slug", getProductBySlug);
+router.get(
+  "/products/export-excel",
+  exportarProductosExcel
+);
 router.get("/products/:id", getProductById);
 router.post("/products", createProduct);
 router.put("/products/:id", updateProduct);
@@ -51,10 +55,7 @@ router.get("/orders/:id", getOrderById);
 
 // Listado general
 router.get("/orders", listOrders);
-router.get(
-  "/products/export-excel",
-  exportarProductosExcel
-);
+
 
 
 export default router;
