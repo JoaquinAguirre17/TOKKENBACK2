@@ -1,4 +1,5 @@
 // routes/mongoRoutesExtra.js
+
 import express from "express";
 import multer from "multer";
 
@@ -12,7 +13,7 @@ import {
   exportarVentasExcel,
   obtenerVentasPorMes,
   importarExcel,
-  exportarProductosExcel, // 👈 AGREGAR
+  exportarProductosExcel,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -24,14 +25,34 @@ const upload = multer({
   storage,
 });
 
-// Productos
-router.get("/products", getProducts);
+// =========================
+// PRODUCTOS
+// =========================
 
-// Exportar productos Excel
-router.get("/products/export-excel", exportarProductosExcel); 
+// Obtener todos los productos
+router.get(
+  "/products",
+  getProducts
+);
 
-router.get("/products/:id", getProductDetails);
-router.get("/products/search", searchProducts);
+// Exportar Excel
+router.get(
+  "/products/export-excel",
+  exportarProductosExcel
+);
+
+// Buscar productos
+router.get(
+  "/products/search",
+  searchProducts
+);
+
+// Obtener producto por ID
+// ⚠️ SIEMPRE AL FINAL
+router.get(
+  "/products/:id",
+  getProductDetails
+);
 
 // Importar productos Excel
 router.post(
@@ -40,15 +61,42 @@ router.post(
   importarExcel
 );
 
+// =========================
+// ÓRDENES
+// =========================
 
+// Crear orden
+router.post(
+  "/orders",
+  createOrder
+);
 
-// Órdenes
-router.post("/orders", createOrder);
-router.post("/orders/confirm", confirmOrder);
-router.get("/orders/cierre-mes", obtenerVentasPorMes);
+// Confirmar orden
+router.post(
+  "/orders/confirm",
+  confirmOrder
+);
 
-// Reportes
-router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
-router.post("/orders/export-excel", exportarVentasExcel);
+// Ventas por mes
+router.get(
+  "/orders/cierre-mes",
+  obtenerVentasPorMes
+);
+
+// =========================
+// REPORTES
+// =========================
+
+// Cierre de caja
+router.get(
+  "/orders/cierre-caja",
+  obtenerVentasCierreCaja
+);
+
+// Exportar ventas Excel
+router.post(
+  "/orders/export-excel",
+  exportarVentasExcel
+);
 
 export default router;
