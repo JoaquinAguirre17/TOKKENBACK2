@@ -1142,47 +1142,40 @@ export const importarExcel = async (req, res) => {
 };
 export const exportarProductosExcel = async (req, res) => {
   try {
-    // Obtener productos
     const products = await Product.find();
 
-    // Transformar productos para Excel
-    const productosExcel = products.map((p) => ({
-      sku: p.sku || "",
+    const productosExcel = products.map((p) => {
+      const variant = p.variants?.[0] || {};
+      const image = p.images?.[0]?.url || "";
 
-      title: p.title || "",
+      return {
+        sku: p.sku || "",
+        title: p.title || "",
+        description: p.description || "",
+        brand: p.brand || "",
+        category: p.category || "",
+        tags: p.tags?.join(",") || "",
 
-      description: p.description || "",
+        image, // 👈 nueva columna
 
-      brand: p.brand || "",
+        stock: variant.stock ?? 0,
+        stockMinimo: variant.stockMinimo ?? 0,
+        stockIdeal: variant.stockIdeal ?? 0,
 
-      category: p.category || "",
+        price: p.pricing?.list || 0,
+      };
+    });
 
-      tags: p.tags?.join(",") || "",
-
-      stock: p.variants?.[0]?.stock || 0,
-
-      price: p.pricing?.list || 0,
-    }));
-
-    // Crear hoja
     const worksheet = XLSX.utils.json_to_sheet(productosExcel);
-
-    // Crear libro
     const workbook = XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(
-      workbook,
-      worksheet,
-      "Productos"
-    );
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Productos");
 
-    // Generar buffer
     const excelBuffer = XLSX.write(workbook, {
       bookType: "xlsx",
       type: "buffer",
     });
 
-    // Headers descarga
     res.setHeader(
       "Content-Disposition",
       "attachment; filename=productos.xlsx"
@@ -1193,7 +1186,6 @@ export const exportarProductosExcel = async (req, res) => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
 
-    // Enviar archivo
     res.send(excelBuffer);
 
   } catch (error) {
