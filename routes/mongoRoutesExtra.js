@@ -26,6 +26,10 @@ const upload = multer({
 
 // Productos
 router.get("/products", getProducts);
+
+// Exportar productos Excel
+router.get("/products/export-excel", exportarProductosExcel); 
+
 router.get("/products/:id", getProductDetails);
 router.get("/products/search", searchProducts);
 
@@ -36,8 +40,7 @@ router.post(
   importarExcel
 );
 
-// Exportar productos Excel
-router.get("/products/export-excel", exportarProductosExcel);
+
 
 // Órdenes
 router.post("/orders", createOrder);
