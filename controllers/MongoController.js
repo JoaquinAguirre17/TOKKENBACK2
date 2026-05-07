@@ -5,7 +5,7 @@ import PDFDocument from "pdfkit";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
 const XLSX = require("xlsx");
-const Product = require("../Models/Product");
+
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
