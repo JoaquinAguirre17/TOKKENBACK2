@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
-const XLSX = require("xlsx");
+import XLSX from "xlsx";
 
 
 import Product from "../Models/Product.js";
