@@ -451,99 +451,219 @@ export const listOrders = async (req, res) => {
   }
 };
 export const obtenerVentasCierreCaja = async (req, res) => {
+
   try {
+
     const { fecha } = req.query;
-    if (!fecha) return res.status(400).json({ error: "Falta fecha" });
+
+    if (!fecha) {
+      return res.status(400).json({
+        error: "Falta fecha"
+      });
+    }
 
     const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
+
     const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
 
     // 🟢 VENTAS
     const orders = await Order.find({
       "payment.status": "approved",
-      createdAt: { $gte: inicio, $lte: fin }
+      createdAt: {
+        $gte: inicio,
+        $lte: fin
+      }
     }).lean();
 
     // 🟣 INGRESOS
     const ingresosDB = await Ingreso.find({
-      createdAt: { $gte: inicio, $lte: fin }
+      createdAt: {
+        $gte: inicio,
+        $lte: fin
+      }
     }).lean();
 
     const ventas = [];
+
     const porVendedor = {};
+
     const porMedioPago = {};
+
     const porHora = {};
-    const productos = [];
+
+    // ✅ AHORA ES OBJETO
+    const productos = {};
 
     let total = 0;
 
-    // 🔵 PROCESAR VENTAS
+    /* =========================
+       PROCESAR VENTAS
+    ========================= */
+
     orders.forEach((o) => {
+
       const monto = Number(o?.totals?.grand || 0);
-      const vendedor = o?.createdBy || "No especificado";
-      const medioPago = o?.payment?.method || "No especificado";
+
+      const vendedor =
+        o?.createdBy || "No especificado";
+
+      const medioPago =
+        o?.payment?.method || "No especificado";
+
       const fechaPago = o?.createdAt;
-      const hora = dayjs(fechaPago).tz(TZ).format("HH");
+
+      const hora =
+        dayjs(fechaPago)
+          .tz(TZ)
+          .format("HH");
 
       ventas.push({
         id: String(o._id),
+
         nombre: o.orderNumber,
+
         vendedor,
+
         medioPago,
+
         monto,
+
         comision: monto * 0.02,
-        fecha: dayjs(fechaPago).tz(TZ).format("YYYY-MM-DD"),
-        hora: dayjs(fechaPago).tz(TZ).format("HH:mm")
+
+        fecha:
+          dayjs(fechaPago)
+            .tz(TZ)
+            .format("YYYY-MM-DD"),
+
+        hora:
+          dayjs(fechaPago)
+            .tz(TZ)
+            .format("HH:mm")
       });
 
       total += monto;
-      porVendedor[vendedor] = (porVendedor[vendedor] || 0) + monto;
-      porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + monto;
-      porHora[hora] = (porHora[hora] || 0) + monto;
+
+      // 🔵 POR VENDEDOR
+      porVendedor[vendedor] =
+        (porVendedor[vendedor] || 0) + monto;
+
+      // 🟣 POR MEDIO DE PAGO
+      porMedioPago[medioPago] =
+        (porMedioPago[medioPago] || 0) + monto;
+
+      // 🟠 POR HORA
+      porHora[hora] =
+        (porHora[hora] || 0) + monto;
+
+      /* =========================
+         PRODUCTOS VENDIDOS
+      ========================= */
 
       o.items?.forEach((item) => {
-        const nombre = item.title || "Producto";
-        productos.push({
-          nombre,
-          cantidad: item.qty || 1,
-          fecha: dayjs(fechaPago).tz(TZ).format("YYYY-MM-DD HH:mm")
-        });
+
+        const nombre =
+          item.title || "Producto";
+
+        if (!productos[nombre]) {
+
+          productos[nombre] = {
+            cantidad: 0,
+            total: 0
+          };
+
+        }
+
+        productos[nombre].cantidad +=
+          Number(item.qty || 1);
+
+        productos[nombre].total +=
+          Number(item.subtotal || 0);
+
       });
+
     });
 
-    // 🔹 PROCESAR INGRESOS (productos ingresados)
+    /* =========================
+       PRODUCTOS INGRESADOS
+    ========================= */
+
     const productosIngresados = [];
+
     for (const ingreso of ingresosDB) {
+
       for (const item of ingreso.items) {
-        const productoDB = await Product.findById(item.productId).lean();
+
+        const productoDB =
+          await Product.findById(
+            item.productId
+          ).lean();
+
         productosIngresados.push({
-          nombre: productoDB?.title || "Producto",
+
+          nombre:
+            productoDB?.title || "Producto",
+
           cantidad: item.quantity,
-          fecha: dayjs(ingreso.createdAt).tz(TZ).format("YYYY-MM-DD HH:mm")
+
+          fecha:
+            dayjs(ingreso.createdAt)
+              .tz(TZ)
+              .format("YYYY-MM-DD HH:mm")
+
         });
+
       }
+
     }
 
+    /* =========================
+       RESPUESTA
+    ========================= */
+
     res.json({
+
       ventas,
-      productosIngresados, // lista con nombre, cantidad y fecha/hora
+
+      // ✅ IMPORTANTE
+      productos,
+
+      productosIngresados,
+
       resumen: {
+
         total,
+
         comisiones: total * 0.02,
+
         cantidadVentas: ventas.length
+
       },
+
       porVendedor,
+
       porMedioPago,
+
       porHora
+
     });
 
   } catch (error) {
-    console.error("❌ Error cierre caja:", error);
+
+    console.error(
+      "❌ Error cierre caja:",
+      error
+    );
+
     res.status(500).json({
+
       error: "Error al obtener cierre",
+
       message: error.message
+
     });
+
   }
+
 };
 // Obtener ventas por mes
 export const obtenerVentasPorMes = async (req, res) => {
