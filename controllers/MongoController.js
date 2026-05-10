@@ -683,15 +683,14 @@ export const exportarVentasExcel = async (req, res) => {
   try {
 
     const {
-      ventas,
-      resumen,
-      porVendedor,
-      porMedioPago,
-      porHora,
-      productos,
-      ingresos = [] // 🟣 NUEVO
+      ventas = [],
+      resumen = {},
+      porVendedor = {},
+      porMedioPago = {},
+      porHora = {},
+      productos = {},
+      ingresos = []
     } = req.body;
-
     const workbook = new ExcelJS.Workbook();
 
     workbook.creator = "Sistema POS";
@@ -901,6 +900,8 @@ export const exportarVentasExcel = async (req, res) => {
        DESCARGA
     ========================= */
 
+    const buffer = await workbook.xlsx.writeBuffer();
+
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -911,9 +912,7 @@ export const exportarVentasExcel = async (req, res) => {
       "attachment; filename=reporte_cierre_caja.xlsx"
     );
 
-    await workbook.xlsx.write(res);
-
-    res.end();
+    return res.end(buffer);
 
   } catch (error) {
 
@@ -1070,10 +1069,10 @@ export const importarExcel = async (req, res) => {
 
       tags: p.tags
         ? p.tags
-            .toString()
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
+          .toString()
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         : [],
 
       pricing: {
