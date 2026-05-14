@@ -434,14 +434,17 @@ export const deleteOrder = async (req, res) => {
 
     const { id } = req.params;
 
-    const order = await Order.findById(id).session(session);
+    const order = await Order.findById(id)
+      .session(session);
 
     if (!order) {
+
       await session.abortTransaction();
 
       return res.status(404).json({
         error: "Orden no encontrada",
       });
+
     }
 
     /* =========================
@@ -456,7 +459,8 @@ export const deleteOrder = async (req, res) => {
         item.productId,
         {
           $inc: {
-            stock: Number(item.qty || 1),
+            "variants.0.stock":
+              Number(item.qty || 1),
           },
         },
         { session }
@@ -477,7 +481,8 @@ export const deleteOrder = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Venta eliminada correctamente",
+      message:
+        "Venta eliminada correctamente",
     });
 
   } catch (error) {
