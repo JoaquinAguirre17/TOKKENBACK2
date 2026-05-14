@@ -424,6 +424,50 @@ export const confirmOrder = async (req, res) => {
     res.status(500).json({ message: "Error al confirmar la orden", error: e.message || e });
   }
 };
+export const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        error: "Orden no encontrada",
+      });
+    }
+
+    // ✅ DEVOLVER STOCK
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(
+        item.productId,
+        {
+          $inc: {
+            stock: Number(item.qty || 1),
+          },
+        }
+      );
+    }
+
+    // ✅ ELIMINAR ORDEN
+    await Order.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: "Venta eliminada correctamente",
+    });
+
+  } catch (error) {
+    console.error(
+      "❌ Error eliminando orden:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error al eliminar venta",
+      message: error.message,
+    });
+  }
+};
 
 export const listOrders = async (req, res) => {
   try {
@@ -460,9 +504,15 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       });
     }
 
-    const inicio = dayjs.tz(fecha, TZ).startOf("day").toDate();
+    const inicio = dayjs
+      .tz(fecha, TZ)
+      .startOf("day")
+      .toDate();
 
-    const fin = dayjs.tz(fecha, TZ).endOf("day").toDate();
+    const fin = dayjs
+      .tz(fecha, TZ)
+      .endOf("day")
+      .toDate();
 
     // 🟢 VENTAS
     const orders = await Order.find({
@@ -502,14 +552,14 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         o?.createdBy || "No especificado";
 
       const medioPago =
-        o?.payment?.method || "No especificado";
+        o?.payment?.method ||
+        "No especificado";
 
       const fechaPago = o?.createdAt;
 
-      const hora =
-        dayjs(fechaPago)
-          .tz(TZ)
-          .format("HH");
+      const hora = dayjs(fechaPago)
+        .tz(TZ)
+        .format("HH");
 
       /* =========================
          PRODUCTOS VENDIDOS
@@ -519,14 +569,18 @@ export const obtenerVentasCierreCaja = async (req, res) => {
         const nombre =
           item.title || "Producto";
 
-        const subtotal =
-          Number(item.subtotal || 0);
+        const subtotal = Number(
+          item.subtotal || 0
+        );
 
-        const cantidad =
-          Number(item.qty || 1);
+        const cantidad = Number(
+          item.qty || 1
+        );
 
         // ✅ TABLA DE VENTAS
         ventas.push({
+          id: String(o._id),
+
           producto: nombre,
 
           vendedor,
@@ -535,17 +589,16 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
           monto: subtotal,
 
-          comision: subtotal * 0.02,
+          comision:
+            subtotal * 0.02,
 
-          fecha:
-            dayjs(fechaPago)
-              .tz(TZ)
-              .format("YYYY-MM-DD"),
+          fecha: dayjs(fechaPago)
+            .tz(TZ)
+            .format("YYYY-MM-DD"),
 
-          hora:
-            dayjs(fechaPago)
-              .tz(TZ)
-              .format("HH:mm"),
+          hora: dayjs(fechaPago)
+            .tz(TZ)
+            .format("HH:mm"),
         });
 
         // ✅ TOTAL GENERAL
@@ -597,14 +650,18 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
         productosIngresados.push({
           nombre:
-            productoDB?.title || "Producto",
+            productoDB?.title ||
+            "Producto",
 
           cantidad: item.quantity,
 
-          fecha:
-            dayjs(ingreso.createdAt)
-              .tz(TZ)
-              .format("YYYY-MM-DD HH:mm"),
+          fecha: dayjs(
+            ingreso.createdAt
+          )
+            .tz(TZ)
+            .format(
+              "YYYY-MM-DD HH:mm"
+            ),
         });
       }
     }
@@ -623,9 +680,11 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       resumen: {
         total,
 
-        comisiones: total * 0.02,
+        comisiones:
+          total * 0.02,
 
-        cantidadVentas: ventas.length,
+        cantidadVentas:
+          ventas.length,
       },
 
       porVendedor,
@@ -641,12 +700,14 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     );
 
     res.status(500).json({
-      error: "Error al obtener cierre",
+      error:
+        "Error al obtener cierre",
 
       message: error.message,
     });
   }
 };
+
 // Obtener ventas por mes
 export const obtenerVentasPorMes = async (req, res) => {
   try {

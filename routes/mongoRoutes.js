@@ -24,6 +24,7 @@ import {
   crearIngreso,
   exportarProductosExcel,
   importarExcel,
+  deleteOrder,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -57,6 +58,7 @@ router.post("/orders", createOrder);
 // Rutas dinámicas con :id al final
 router.get("/orders/:id/pdf", downloadOrderPDF);
 router.get("/orders/:id", getOrderById);
+router.delete("/orders/:id", deleteOrder);
 
 // Listado general
 router.get("/orders", listOrders);
