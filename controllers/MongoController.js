@@ -425,31 +425,55 @@ export const confirmOrder = async (req, res) => {
   }
 };
 export const deleteOrder = async (req, res) => {
+
+  const session = await mongoose.startSession();
+
   try {
+
+    await session.startTransaction();
+
     const { id } = req.params;
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).session(session);
 
     if (!order) {
+      await session.abortTransaction();
+
       return res.status(404).json({
         error: "Orden no encontrada",
       });
     }
 
-    // ✅ DEVOLVER STOCK
+    /* =========================
+       DEVOLVER STOCK
+    ========================= */
+
     for (const item of order.items) {
+
+      if (!item.productId) continue;
+
       await Product.findByIdAndUpdate(
         item.productId,
         {
           $inc: {
             stock: Number(item.qty || 1),
           },
-        }
+        },
+        { session }
       );
+
     }
 
-    // ✅ ELIMINAR ORDEN
-    await Order.findByIdAndDelete(id);
+    /* =========================
+       ELIMINAR ORDEN
+    ========================= */
+
+    await Order.findByIdAndDelete(
+      id,
+      { session }
+    );
+
+    await session.commitTransaction();
 
     res.json({
       success: true,
@@ -457,6 +481,9 @@ export const deleteOrder = async (req, res) => {
     });
 
   } catch (error) {
+
+    await session.abortTransaction();
+
     console.error(
       "❌ Error eliminando orden:",
       error
@@ -466,7 +493,13 @@ export const deleteOrder = async (req, res) => {
       error: "Error al eliminar venta",
       message: error.message,
     });
+
+  } finally {
+
+    session.endSession();
+
   }
+
 };
 
 export const listOrders = async (req, res) => {
