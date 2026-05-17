@@ -25,9 +25,14 @@ import {
   exportarProductosExcel,
   importarExcel,
   deleteOrder,
+  login,
 } from "../controllers/MongoController.js";
 
-const router = express.Router();
+const router = express.Router(); 
+
+/* -------------------- AUTH -------------------- */
+
+router.post("/auth/login",login);
 
 /* -------------------- PRODUCTOS -------------------- */
 router.get("/products", getProducts);

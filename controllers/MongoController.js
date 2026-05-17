@@ -14,6 +14,15 @@ import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
 import Ingreso from "../Models/Ingreso.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+import User from "../models/User.js";
+
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  "tokken_secret";
+
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1407,4 +1416,77 @@ export const exportarProductosExcel = async (req, res) => {
       error: "Error al exportar productos",
     });
   }
+}; 
+
+//Funcion de login
+export const login = async (
+  req,
+  res
+) => {
+
+  try {
+
+    const {
+      username,
+      password
+    } = req.body;
+
+    const user =
+      await User.findOne({
+        username
+      });
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Usuario incorrecto",
+      });
+    }
+
+    const validPassword =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!validPassword) {
+      return res.status(401).json({
+        error: "Contraseña incorrecta",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: user._id,
+        rol: user.rol,
+        username: user.username,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.json({
+
+      token,
+
+      user: {
+        id: user._id,
+        nombre: user.nombre,
+        username: user.username,
+        rol: user.rol,
+      },
+
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      error: "Error login",
+    });
+
+  }
+
 };
