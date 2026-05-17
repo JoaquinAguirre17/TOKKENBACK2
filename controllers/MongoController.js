@@ -33,17 +33,8 @@ dayjs.extend(timezone);
 
 // zona horaria del sistema POS
 const TZ = "America/Argentina/Cordoba";
-const normalizePaymentMethod = (method = "") => {
-  const m = method.toLowerCase();
 
-  if (m.includes("efectivo")) return "efectivo";
-  if (m.includes("transfer")) return "transferencia";
-  if (m.includes("debito")) return "debito";
-  if (m.includes("credito")) return "credito";
-  if (m.includes("qr") || m.includes("openpay")) return "qr";
 
-  return "efectivo";
-};
 // opcional: default global
 dayjs.tz.setDefault(TZ);
 import { MercadoPagoConfig, Preference } from "mercadopago";
@@ -1624,60 +1615,44 @@ export const getCashClosure = async (req, res) => {
       ...(sessionId ? { sessionId } : {}),
     }).lean();
 
-    let total = 0;
-
     const porMedioPago = {
-      efectivo: 0,
-      transferencia: 0,
-      debito: 0,
-      credito: 0,
-      qr: 0,
-      unknown: 0,
+      "Efectivo": 0,
+      "Transferencia": 0,
+      "Débito": 0,
+      "Crédito": 0,
+      "QR Openpay": 0,
     };
 
-    const normalizeMethod = (method) => {
-      if (!method) return "efectivo";
-
-      const m = method.toLowerCase();
-
-      if (m.includes("efectivo")) return "efectivo";
-      if (m.includes("transfer")) return "transferencia";
-      if (m.includes("debito")) return "debito";
-      if (m.includes("credito")) return "credito";
-      if (m.includes("qr") || m.includes("openpay")) return "qr";
-
-      return "unknown";
-    };
+    let totalSales = 0;
 
     orders.forEach((o) => {
-      const method = normalizeMethod(o?.payment?.method);
+      const method = o?.payment?.method || "Efectivo";
       const amount = Number(o.total || 0);
 
-      total += amount;
+      totalSales += amount;
 
       if (porMedioPago[method] !== undefined) {
         porMedioPago[method] += amount;
       } else {
-        porMedioPago.unknown += amount;
+        porMedioPago["Efectivo"] += amount;
       }
     });
 
     return res.json({
       resumen: {
-        totalSales: total,
+        totalSales,
         cantidadVentas: orders.length,
       },
       porMedioPago,
     });
 
   } catch (error) {
-    console.error("❌ Error cierre de caja:", error);
-
+    console.error(error);
     return res.status(500).json({
       error: "Error cierre de caja",
     });
   }
-}; 
+};
 
 export const createCashClosure = async (req, res) => {
   try {
