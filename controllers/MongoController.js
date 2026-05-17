@@ -16,8 +16,12 @@ import { generateSKU } from "../Utils/generateSKU.js";
 import Ingreso from "../Models/Ingreso.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+
 
 import User from "../Models/User.js";
+import UserSession
+from "../Models/UserSession.js";
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
@@ -1416,25 +1420,15 @@ export const exportarProductosExcel = async (req, res) => {
       error: "Error al exportar productos",
     });
   }
-}; 
+};
 
 //Funcion de login
-export const login = async (
-  req,
-  res
-) => {
-
+export const login = async (req, res) => {
   try {
+    const { username, password } = req.body;
 
-    const {
-      username,
-      password
-    } = req.body;
-
-    const user =
-      await User.findOne({
-        username
-      });
+    // 1. Buscar usuario
+    const user = await User.findOne({ username });
 
     if (!user) {
       return res.status(401).json({
@@ -1442,11 +1436,11 @@ export const login = async (
       });
     }
 
-    const validPassword =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
+    // 2. Validar password
+    const validPassword = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!validPassword) {
       return res.status(401).json({
@@ -1454,6 +1448,7 @@ export const login = async (
       });
     }
 
+    // 3. Generar JWT
     const token = jwt.sign(
       {
         id: user._id,
@@ -1461,32 +1456,207 @@ export const login = async (
         username: user.username,
       },
       JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
+      { expiresIn: "7d" }
     );
 
-    res.json({
+    // 4. Crear sessionId único
+    const sessionId = crypto.randomUUID();
 
+    // 5. Guardar sesión en DB
+    await UserSession.create({
+      userId: user._id,
+      username: user.username,
+      nombre: user.nombre,
+      rol: user.rol,
+      sessionId,
+      loginAt: new Date(),
+      active: true,
+    });
+
+    // 6. Respuesta
+    return res.json({
       token,
-
+      sessionId,
       user: {
         id: user._id,
         nombre: user.nombre,
         username: user.username,
         rol: user.rol,
       },
-
     });
 
   } catch (error) {
-
     console.error(error);
-
-    res.status(500).json({
+    return res.status(500).json({
       error: "Error login",
     });
-
   }
+}; 
+export const logout = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
 
+    /* =========================
+       1. BUSCAR SESIÓN ACTIVA
+    ========================= */
+    const session = await UserSession.findOne({ sessionId });
+
+    if (!session) {
+      return res.status(404).json({
+        error: "Sesión no encontrada",
+      });
+    }
+
+    /* =========================
+       2. OBTENER FECHA DE SALIDA
+    ========================= */
+    const logoutAt = new Date();
+
+    const durationMinutes = Math.floor(
+      (logoutAt - session.loginAt) / 60000
+    );
+
+    /* =========================
+       3. TRAER VENTAS DE LA SESIÓN
+    ========================= */
+    const orders = await Order.find({ sessionId });
+
+    let totalSales = 0;       // total general vendido
+    let cashExpected = 0;     // efectivo esperado
+    let cardTotal = 0;        // tarjeta u otros medios
+
+    orders.forEach((order) => {
+      totalSales += order.total;
+
+      if (order.paymentMethod === "cash") {
+        cashExpected += order.total;
+      } else {
+        cardTotal += order.total;
+      }
+    });
+
+    /* =========================
+       4. CIERRE DE CAJA
+    ========================= */
+    const closure = await CashClosure.create({
+      userId: session.userId,
+      sessionId,
+      totalSales,
+      cashExpected,
+      cardTotal,
+      closedAt: new Date(),
+    });
+
+    /* =========================
+       5. CERRAR SESIÓN
+    ========================= */
+    session.logoutAt = logoutAt;
+    session.durationMinutes = durationMinutes;
+    session.active = false;
+
+    await session.save();
+
+    /* =========================
+       6. RESPUESTA FINAL
+    ========================= */
+    return res.json({
+      message: "Logout + cierre de caja exitoso",
+      durationMinutes,
+      closure,
+    });
+
+  } catch (error) {
+    console.error("Error logout:", error);
+
+    return res.status(500).json({
+      error: "Error logout",
+    });
+  }
+};
+export const checkSession = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    const session = await UserSession.findOne({ sessionId });
+
+    if (!session || !session.active) {
+      return res.status(401).json({
+        error: "Sesión inválida o expirada",
+      });
+    }
+
+    return res.json({
+      ok: true,
+      session,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      error: "Error validando sesión",
+    });
+  }
+};
+
+export const getCashClosure = async (req, res) => {
+  try {
+    const { date, sessionId } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: "Falta fecha" });
+    }
+
+    const start = dayjs(date).startOf("day").toDate();
+    const end = dayjs(date).endOf("day").toDate();
+
+    /* =========================
+       OBTENER VENTAS REALES
+    ========================= */
+    const orders = await Order.find({
+      "payment.status": "approved",
+      createdAt: { $gte: start, $lte: end },
+      ...(sessionId ? { sessionId } : {}),
+    }).lean();
+
+    let total = 0;
+
+    const porMedioPago = {
+      cash: 0,
+      card: 0,
+      credit: 0,
+      debit: 0,
+      transfer: 0,
+      qr: 0,
+    };
+
+    orders.forEach((o) => {
+      const method = o?.payment?.method || "cash";
+      const amount = Number(o.total || 0);
+
+      total += amount;
+
+      if (porMedioPago[method] !== undefined) {
+        porMedioPago[method] += amount;
+      } else {
+        porMedioPago.cash += amount;
+      }
+    });
+
+    /* =========================
+       RESPUESTA PARA FRONT
+    ========================= */
+    return res.json({
+      resumen: {
+        total,
+        cantidadVentas: orders.length,
+      },
+      porMedioPago,
+      orders: orders.length,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Error cierre de caja",
+    });
+  }
 };

@@ -26,6 +26,9 @@ import {
   importarExcel,
   deleteOrder,
   login,
+  logout,
+  checkSession,
+  getCashClosure,
 } from "../controllers/MongoController.js";
 
 const router = express.Router(); 
@@ -33,6 +36,9 @@ const router = express.Router();
 /* -------------------- AUTH -------------------- */
 
 router.post("/auth/login",login);
+router.post("/auth/logout", logout);
+
+router.post("/auth/check-session", checkSession);
 
 /* -------------------- PRODUCTOS -------------------- */
 router.get("/products", getProducts);
@@ -56,6 +62,7 @@ router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
 router.get("/orders/cierre-mes", obtenerVentasPorMes);
 router.post("/ingresos", crearIngreso);
+router.get("/orders/cash-closure", getCashClosure);
 
 // POS / admin
 router.post("/orders", createOrder);               
