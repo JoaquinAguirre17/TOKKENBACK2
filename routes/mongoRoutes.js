@@ -37,7 +37,6 @@ const router = express.Router();
 /* -------------------- AUTH -------------------- */
 
 router.post("/auth/login",login);
-router.post("/auth/logout", logout);
 
 router.post("/auth/check-session", checkSession);
 
@@ -88,4 +87,6 @@ router.post(
 ========================= */
 router.post("/cash-closure", createCashClosure);
 router.get("/orders/cash-closure", getCashClosure);
+router.post("/auth/logout", logout);
+
 export default router;
