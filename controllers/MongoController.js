@@ -21,7 +21,7 @@ import crypto from "crypto";
 
 import User from "../Models/User.js";
 import UserSession
-from "../Models/UserSession.js";
+  from "../Models/UserSession.js";
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
@@ -310,9 +310,9 @@ export const createOrder = async (req, res) => {
     } = req.body;
 
     console.log("VENTA:", req.body);
-/* =========================
-       🔥 LOG DE LA ORDEN RECIBIDA
-    ========================= */
+    /* =========================
+           🔥 LOG DE LA ORDEN RECIBIDA
+        ========================= */
     console.log("===================================");
     console.log("🧾 NUEVA ORDEN RECIBIDA");
     console.log("Productos:", JSON.stringify(productos, null, 2));
@@ -1503,7 +1503,7 @@ export const login = async (req, res) => {
       error: "Error login",
     });
   }
-}; 
+};
 export const logout = async (req, res) => {
   try {
     const { sessionId } = req.body;
@@ -1695,6 +1695,9 @@ export const getCashClosure = async (req, res) => {
       error: "Error cierre de caja",
     });
   }
+  console.log("📦 ORDERS ENCONTRADAS:", orders.length);
+  console.log("🔍 SESSION FILTER:", sessionId);
+  console.log("📅 RANGE:", start, end);
 };
 
 export const createCashClosure = async (req, res) => {
