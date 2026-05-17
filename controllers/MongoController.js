@@ -310,7 +310,17 @@ export const createOrder = async (req, res) => {
     } = req.body;
 
     console.log("VENTA:", req.body);
-
+/* =========================
+       🔥 LOG DE LA ORDEN RECIBIDA
+    ========================= */
+    console.log("===================================");
+    console.log("🧾 NUEVA ORDEN RECIBIDA");
+    console.log("Productos:", JSON.stringify(productos, null, 2));
+    console.log("Método de pago:", metodoPago);
+    console.log("Vendedor:", vendedor);
+    console.log("Total:", total);
+    console.log("BODY COMPLETO:", JSON.stringify(req.body, null, 2));
+    console.log("===================================");
     if (!productos?.length) {
       return res.status(400).json({ message: "No hay productos" });
     }
