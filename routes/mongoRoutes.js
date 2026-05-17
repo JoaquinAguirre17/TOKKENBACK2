@@ -63,11 +63,7 @@ router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
 router.get("/orders/cierre-mes", obtenerVentasPorMes);
 router.post("/ingresos", crearIngreso);
-/* =========================
-   CASH CLOSURE
-========================= */
-router.post("/cash-closure", createCashClosure);
-router.get("/orders/cash-closure", getCashClosure);
+
 
 // POS / admin
 router.post("/orders", createOrder);               
@@ -87,5 +83,9 @@ router.post(
   importarExcel
 );
 
-
+/* =========================
+   CASH CLOSURE
+========================= */
+router.post("/cash-closure", createCashClosure);
+router.get("/orders/cash-closure", getCashClosure);
 export default router;
