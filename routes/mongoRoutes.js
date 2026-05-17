@@ -29,6 +29,7 @@ import {
   logout,
   checkSession,
   getCashClosure,
+  createCashClosure,
 } from "../controllers/MongoController.js";
 
 const router = express.Router(); 
@@ -62,6 +63,10 @@ router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
 router.get("/orders/cierre-mes", obtenerVentasPorMes);
 router.post("/ingresos", crearIngreso);
+/* =========================
+   CASH CLOSURE
+========================= */
+router.post("/cash-closure", createCashClosure);
 router.get("/orders/cash-closure", getCashClosure);
 
 // POS / admin

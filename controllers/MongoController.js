@@ -1667,4 +1667,103 @@ export const getCashClosure = async (req, res) => {
       error: "Error cierre de caja",
     });
   }
-};
+}; 
+
+export const createCashClosure = async (req, res) => {
+  try {
+    const {
+      sessionId,
+      userId,
+      realByPayment,
+      withdrawals = 0,
+      observations = "",
+      date,
+    } = req.body;
+
+    const start = dayjs(date).startOf("day").toDate();
+    const end = dayjs(date).endOf("day").toDate();
+
+    /* =========================
+       VENTAS SISTEMA
+    ========================= */
+    const orders = await Order.find({
+      "payment.status": "approved",
+      createdAt: { $gte: start, $lte: end },
+      sessionId,
+    }).lean();
+
+    const systemByPayment = {
+      efectivo: 0,
+      transferencia: 0,
+      debito: 0,
+      credito: 0,
+      qr: 0,
+    };
+
+    let systemTotal = 0;
+
+    const normalize = (m) => {
+      if (!m) return "efectivo";
+      const v = m.toLowerCase();
+
+      if (v.includes("efectivo")) return "efectivo";
+      if (v.includes("transfer")) return "transferencia";
+      if (v.includes("debito")) return "debito";
+      if (v.includes("credito")) return "credito";
+      if (v.includes("qr")) return "qr";
+
+      return "efectivo";
+    };
+
+    orders.forEach((o) => {
+      const method = normalize(o?.payment?.method);
+      const amount = Number(o.total || 0);
+
+      systemTotal += amount;
+      systemByPayment[method] += amount;
+    });
+
+    /* =========================
+       TOTALES REALES
+    ========================= */
+    const realTotal =
+      Object.values(realByPayment).reduce(
+        (a, b) => a + Number(b || 0),
+        0
+      );
+
+    /* =========================
+       DIFERENCIA
+    ========================= */
+    const difference =
+      realTotal - systemTotal - Number(withdrawals || 0);
+
+    /* =========================
+       GUARDAR EN DB
+    ========================= */
+    const closure = await CashClosure.create({
+      userId,
+      sessionId,
+      systemTotal,
+      systemByPayment,
+      realByPayment,
+      realTotal,
+      withdrawals,
+      difference,
+      observations,
+      date,
+    });
+
+    return res.json({
+      ok: true,
+      closure,
+    });
+
+  } catch (error) {
+    console.error("❌ CashClosure error:", error);
+
+    return res.status(500).json({
+      error: "Error creando cierre de caja",
+    });
+  }
+}; 
