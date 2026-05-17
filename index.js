@@ -7,7 +7,7 @@ import cors from "cors";
 import bcrypt from "bcryptjs";
 
 import mongoRoutes from "./routes/mongoRoutes.js";
-import User from "./models/User.js";
+import User from "./Models/User.js";
 
 dotenv.config();
 
