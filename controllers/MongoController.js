@@ -33,7 +33,17 @@ dayjs.extend(timezone);
 
 // zona horaria del sistema POS
 const TZ = "America/Argentina/Cordoba";
+const normalizePaymentMethod = (method = "") => {
+  const m = method.toLowerCase();
 
+  if (m.includes("efectivo")) return "efectivo";
+  if (m.includes("transfer")) return "transferencia";
+  if (m.includes("debito")) return "debito";
+  if (m.includes("credito")) return "credito";
+  if (m.includes("qr") || m.includes("openpay")) return "qr";
+
+  return "efectivo";
+};
 // opcional: default global
 dayjs.tz.setDefault(TZ);
 import { MercadoPagoConfig, Preference } from "mercadopago";
@@ -1702,21 +1712,8 @@ export const createCashClosure = async (req, res) => {
 
     let systemTotal = 0;
 
-    const normalize = (m) => {
-      if (!m) return "efectivo";
-      const v = m.toLowerCase();
-
-      if (v.includes("efectivo")) return "efectivo";
-      if (v.includes("transfer")) return "transferencia";
-      if (v.includes("debito")) return "debito";
-      if (v.includes("credito")) return "credito";
-      if (v.includes("qr")) return "qr";
-
-      return "efectivo";
-    };
-
     orders.forEach((o) => {
-      const method = normalize(o?.payment?.method);
+      const method = normalizePaymentMethod(o?.payment?.method);
       const amount = Number(o.total || 0);
 
       systemTotal += amount;
@@ -1724,13 +1721,12 @@ export const createCashClosure = async (req, res) => {
     });
 
     /* =========================
-       TOTALES REALES
+       REALES (CAJERO)
     ========================= */
-    const realTotal =
-      Object.values(realByPayment).reduce(
-        (a, b) => a + Number(b || 0),
-        0
-      );
+    const realTotal = Object.values(realByPayment || {}).reduce(
+      (acc, val) => acc + Number(val || 0),
+      0
+    );
 
     /* =========================
        DIFERENCIA
@@ -1739,7 +1735,7 @@ export const createCashClosure = async (req, res) => {
       realTotal - systemTotal - Number(withdrawals || 0);
 
     /* =========================
-       GUARDAR EN DB
+       GUARDAR
     ========================= */
     const closure = await CashClosure.create({
       userId,
@@ -1766,4 +1762,4 @@ export const createCashClosure = async (req, res) => {
       error: "Error creando cierre de caja",
     });
   }
-}; 
+};
