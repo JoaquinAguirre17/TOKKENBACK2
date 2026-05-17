@@ -1608,9 +1608,6 @@ export const getCashClosure = async (req, res) => {
     const start = dayjs(date).startOf("day").toDate();
     const end = dayjs(date).endOf("day").toDate();
 
-    /* =========================
-       OBTENER VENTAS REALES
-    ========================= */
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: start, $lte: end },
@@ -1620,16 +1617,30 @@ export const getCashClosure = async (req, res) => {
     let total = 0;
 
     const porMedioPago = {
-      cash: 0,
-      card: 0,
-      credit: 0,
-      debit: 0,
-      transfer: 0,
+      efectivo: 0,
+      transferencia: 0,
+      debito: 0,
+      credito: 0,
       qr: 0,
+      unknown: 0,
+    };
+
+    const normalizeMethod = (method) => {
+      if (!method) return "efectivo";
+
+      const m = method.toLowerCase();
+
+      if (m.includes("efectivo")) return "efectivo";
+      if (m.includes("transfer")) return "transferencia";
+      if (m.includes("debito")) return "debito";
+      if (m.includes("credito")) return "credito";
+      if (m.includes("qr") || m.includes("openpay")) return "qr";
+
+      return "unknown";
     };
 
     orders.forEach((o) => {
-      const method = o?.payment?.method || "cash";
+      const method = normalizeMethod(o?.payment?.method);
       const amount = Number(o.total || 0);
 
       total += amount;
@@ -1637,25 +1648,22 @@ export const getCashClosure = async (req, res) => {
       if (porMedioPago[method] !== undefined) {
         porMedioPago[method] += amount;
       } else {
-        porMedioPago.cash += amount;
+        porMedioPago.unknown += amount;
       }
     });
 
-    /* =========================
-       RESPUESTA PARA FRONT
-    ========================= */
     return res.json({
       resumen: {
-        total,
+        totalSales: total,
         cantidadVentas: orders.length,
       },
       porMedioPago,
-      orders: orders.length,
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
+    console.error("❌ Error cierre de caja:", error);
+
+    return res.status(500).json({
       error: "Error cierre de caja",
     });
   }
