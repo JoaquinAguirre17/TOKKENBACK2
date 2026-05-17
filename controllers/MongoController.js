@@ -1620,45 +1620,77 @@ export const getCashClosure = async (req, res) => {
     const start = dayjs(date).startOf("day").toDate();
     const end = dayjs(date).endOf("day").toDate();
 
+    /* =========================
+       OBTENER VENTAS
+    ========================= */
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: start, $lte: end },
       ...(sessionId ? { sessionId } : {}),
     }).lean();
 
+    let total = 0;
+
+    /* =========================
+       MEDIOS DE PAGO NORMALIZADOS
+    ========================= */
     const porMedioPago = {
-      "Efectivo": 0,
-      "Transferencia": 0,
-      "Débito": 0,
-      "Crédito": 0,
-      "QR Openpay": 0,
+      efectivo: 0,
+      transferencia: 0,
+      debito: 0,
+      credito: 0,
+      qr: 0,
     };
 
-    let totalSales = 0;
+    /* =========================
+       NORMALIZADOR (CLAVE DEL FIX)
+    ========================= */
+    const normalizePayment = (o) => {
+      const m =
+        o?.payment?.method ||
+        o?.metodoPago ||
+        o?.paymentMethod ||
+        "";
 
+      const v = m.toLowerCase();
+
+      if (v.includes("efectivo")) return "efectivo";
+      if (v.includes("transfer")) return "transferencia";
+      if (v.includes("debito")) return "debito";
+      if (v.includes("credito")) return "credito";
+      if (v.includes("qr") || v.includes("openpay")) return "qr";
+
+      return "efectivo";
+    };
+
+    /* =========================
+       SUMATORIA
+    ========================= */
     orders.forEach((o) => {
-      const method = o?.payment?.method || "Efectivo";
-      const amount = Number(o.total || 0);
+      const method = normalizePayment(o);
+      const amount = Number(o.total || o.totals?.grand || 0);
 
-      totalSales += amount;
+      total += amount;
 
       if (porMedioPago[method] !== undefined) {
         porMedioPago[method] += amount;
-      } else {
-        porMedioPago["Efectivo"] += amount;
       }
     });
 
+    /* =========================
+       RESPUESTA FINAL
+    ========================= */
     return res.json({
       resumen: {
-        totalSales,
+        totalSales: total,
         cantidadVentas: orders.length,
       },
       porMedioPago,
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("❌ Error cierre de caja:", error);
+
     return res.status(500).json({
       error: "Error cierre de caja",
     });
@@ -1676,18 +1708,46 @@ export const createCashClosure = async (req, res) => {
       date,
     } = req.body;
 
+    if (!date) {
+      return res.status(400).json({ error: "Falta fecha" });
+    }
+
     const start = dayjs(date).startOf("day").toDate();
     const end = dayjs(date).endOf("day").toDate();
 
     /* =========================
-       VENTAS SISTEMA
+       OBTENER VENTAS DEL SISTEMA
     ========================= */
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: start, $lte: end },
-      sessionId,
+      ...(sessionId ? { sessionId } : {}),
     }).lean();
 
+    /* =========================
+       NORMALIZADOR DE PAGOS
+    ========================= */
+    const normalizePayment = (o) => {
+      const m =
+        o?.payment?.method ||
+        o?.metodoPago ||
+        o?.paymentMethod ||
+        "";
+
+      const v = m.toLowerCase();
+
+      if (v.includes("efectivo")) return "efectivo";
+      if (v.includes("transfer")) return "transferencia";
+      if (v.includes("debito")) return "debito";
+      if (v.includes("credito")) return "credito";
+      if (v.includes("qr") || v.includes("openpay")) return "qr";
+
+      return "efectivo";
+    };
+
+    /* =========================
+       TOTALES SISTEMA
+    ========================= */
     const systemByPayment = {
       efectivo: 0,
       transferencia: 0,
@@ -1699,15 +1759,18 @@ export const createCashClosure = async (req, res) => {
     let systemTotal = 0;
 
     orders.forEach((o) => {
-      const method = normalizePaymentMethod(o?.payment?.method);
-      const amount = Number(o.total || 0);
+      const method = normalizePayment(o);
+      const amount = Number(o.total || o.totals?.grand || 0);
 
       systemTotal += amount;
-      systemByPayment[method] += amount;
+
+      if (systemByPayment[method] !== undefined) {
+        systemByPayment[method] += amount;
+      }
     });
 
     /* =========================
-       REALES (CAJERO)
+       TOTALES REALES (CAJERO)
     ========================= */
     const realTotal = Object.values(realByPayment || {}).reduce(
       (acc, val) => acc + Number(val || 0),
@@ -1715,34 +1778,46 @@ export const createCashClosure = async (req, res) => {
     );
 
     /* =========================
-       DIFERENCIA
+       DIFERENCIA FINAL
     ========================= */
     const difference =
       realTotal - systemTotal - Number(withdrawals || 0);
 
     /* =========================
-       GUARDAR
+       GUARDAR EN DB
     ========================= */
     const closure = await CashClosure.create({
       userId,
       sessionId,
+      date,
+
       systemTotal,
       systemByPayment,
-      realByPayment,
+
+      realByPayment: realByPayment || {},
       realTotal,
-      withdrawals,
+
+      withdrawals: Number(withdrawals || 0),
       difference,
+
       observations,
-      date,
+      createdAt: new Date(),
     });
 
+    /* =========================
+       RESPUESTA
+    ========================= */
     return res.json({
       ok: true,
       closure,
+      systemTotal,
+      systemByPayment,
+      realTotal,
+      difference,
     });
 
   } catch (error) {
-    console.error("❌ CashClosure error:", error);
+    console.error("❌ Error createCashClosure:", error);
 
     return res.status(500).json({
       error: "Error creando cierre de caja",
