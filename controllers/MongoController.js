@@ -1621,6 +1621,15 @@ export const getCashClosure = async (req, res) => {
     const end = dayjs(date).endOf("day").toDate();
 
     /* =========================
+       LOG INICIAL (DEBUG CONTROLADO)
+    ========================= */
+    console.log("\n==============================");
+    console.log("📊 CASH CLOSURE DEBUG START");
+    console.log("==============================");
+    console.log("🔍 SessionId:", sessionId || "SIN FILTRO");
+    console.log("📅 Rango:", { start, end });
+
+    /* =========================
        OBTENER VENTAS
     ========================= */
     const orders = await Order.find({
@@ -1629,10 +1638,12 @@ export const getCashClosure = async (req, res) => {
       ...(sessionId ? { sessionId } : {}),
     }).lean();
 
+    console.log("📦 Orders encontradas:", orders.length);
+
     let total = 0;
 
     /* =========================
-       MEDIOS DE PAGO NORMALIZADOS
+       MAPA DE MEDIOS DE PAGO
     ========================= */
     const porMedioPago = {
       efectivo: 0,
@@ -1643,7 +1654,7 @@ export const getCashClosure = async (req, res) => {
     };
 
     /* =========================
-       NORMALIZADOR (CLAVE DEL FIX)
+       NORMALIZADOR
     ========================= */
     const normalizePayment = (o) => {
       const m =
@@ -1652,7 +1663,7 @@ export const getCashClosure = async (req, res) => {
         o?.paymentMethod ||
         "";
 
-      const v = m.toLowerCase();
+      const v = String(m).toLowerCase();
 
       if (v.includes("efectivo")) return "efectivo";
       if (v.includes("transfer")) return "transferencia";
@@ -1664,21 +1675,40 @@ export const getCashClosure = async (req, res) => {
     };
 
     /* =========================
-       SUMATORIA
+       SUMATORIA CON DEBUG POR ORDEN
     ========================= */
-    orders.forEach((o) => {
+    orders.forEach((o, i) => {
       const method = normalizePayment(o);
-      const amount = Number(o.total || o.totals?.grand || 0);
+      const amount = Number(o.total || o.totals?.grand || o.payment?.amount || 0);
 
       total += amount;
 
       if (porMedioPago[method] !== undefined) {
         porMedioPago[method] += amount;
       }
+
+      /* =========================
+         DEBUG POR ORDEN (CLAVE)
+      ========================= */
+      console.log("\n🧾 ORDEN:", i + 1);
+      console.log("ID:", o._id);
+      console.log("RAW METHOD:", o?.payment?.method || o?.paymentMethod || o?.metodoPago);
+      console.log("NORMALIZED:", method);
+      console.log("AMOUNT:", amount);
     });
 
     /* =========================
-       RESPUESTA FINAL
+       RESUMEN FINAL
+    ========================= */
+    console.log("\n==============================");
+    console.log("📊 RESUMEN FINAL");
+    console.log("==============================");
+    console.log("TOTAL:", total);
+    console.log("POR MEDIO DE PAGO:", porMedioPago);
+    console.log("==============================\n");
+
+    /* =========================
+       RESPONSE
     ========================= */
     return res.json({
       resumen: {
@@ -1695,9 +1725,6 @@ export const getCashClosure = async (req, res) => {
       error: "Error cierre de caja",
     });
   }
-  console.log("📦 ORDERS ENCONTRADAS:", orders.length);
-  console.log("🔍 SESSION FILTER:", sessionId);
-  console.log("📅 RANGE:", start, end);
 };
 
 export const createCashClosure = async (req, res) => {
