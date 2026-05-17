@@ -17,7 +17,7 @@ import Ingreso from "../Models/Ingreso.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-import User from "../models/User.js";
+import User from "../Models/User.js";
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
