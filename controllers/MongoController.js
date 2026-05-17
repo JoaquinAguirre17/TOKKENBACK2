@@ -299,10 +299,15 @@ export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
-
     await session.startTransaction();
 
-    const { productos, metodoPago, vendedor, total } = req.body;
+    const {
+      productos,
+      metodoPago,
+      vendedor,
+      total,
+      sessionId // 🔥 CLAVE
+    } = req.body;
 
     console.log("VENTA:", req.body);
 
@@ -355,7 +360,6 @@ export const createOrder = async (req, res) => {
 
     const orderNumber = await generateOrderNumber();
 
-    // hora correcta Argentina
     const now = dayjs().tz(TZ).toDate();
 
     const order = new Order({
@@ -378,8 +382,9 @@ export const createOrder = async (req, res) => {
 
       createdBy: vendedor,
 
-      createdAt: now
+      sessionId, // 🔥 IMPORTANTE PARA CAJA
 
+      createdAt: now
     });
 
     await order.save({ session });
@@ -388,7 +393,7 @@ export const createOrder = async (req, res) => {
 
     await session.commitTransaction();
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Venta registrada",
       order
     });
@@ -399,19 +404,15 @@ export const createOrder = async (req, res) => {
 
     console.error("❌ ERROR CREANDO ORDEN:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error al crear orden",
       error: error.message
     });
 
   } finally {
-
     session.endSession();
-
   }
-
 };
-
 
 export const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
