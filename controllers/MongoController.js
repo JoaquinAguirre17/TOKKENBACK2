@@ -1609,25 +1609,57 @@ export const checkSession = async (req, res) => {
   }
 };
 
-export const getCashClosure = async (req, res) => {
+export const getCashClosureModal = async (req, res) => {
   try {
-    const { date, sessionId } = req.query;
 
-    if (!date) {
-      return res.status(400).json({ error: "Falta fecha" });
+    const { fecha, sessionId } = req.query;
+
+    if (!fecha) {
+      return res.status(400).json({
+        error: "Falta fecha",
+      });
     }
 
-    const start = dayjs(date).startOf("day").toDate();
-    const end = dayjs(date).endOf("day").toDate();
+    /* =========================
+       FECHA INICIO / FIN
+    ========================= */
+    const inicio = dayjs
+      .tz(fecha, TZ)
+      .startOf("day")
+      .toDate();
 
+    const fin = dayjs
+      .tz(fecha, TZ)
+      .endOf("day")
+      .toDate();
+
+    /* =========================
+       BUSCAR ÓRDENES
+    ========================= */
     const orders = await Order.find({
-      createdAt: { $gte: start, $lte: end },
-      ...(sessionId ? { sessionId } : {}),
+      "payment.status": "approved",
+
+      createdAt: {
+        $gte: inicio,
+        $lte: fin,
+      },
+
+      ...(sessionId
+        ? { sessionId }
+        : {}),
     }).lean();
 
-    console.log("📦 ORDERS:", orders.length);
+    console.log("=================================");
+    console.log("💰 CIERRE DE CAJA MODAL");
+    console.log("📅 FECHA:", fecha);
+    console.log("🧾 ÓRDENES:", orders.length);
+    console.log("🆔 SESSION:", sessionId);
+    console.log("=================================");
 
-    let totalSales = 0;
+    /* =========================
+       ACUMULADORES
+    ========================= */
+    let total = 0;
 
     const porMedioPago = {
       "Efectivo": 0,
@@ -1637,31 +1669,62 @@ export const getCashClosure = async (req, res) => {
       "QR Openpay": 0,
     };
 
+    /* =========================
+       RECORRER ÓRDENES
+    ========================= */
     orders.forEach((o) => {
-      const amount = Number(o.total || o.totals?.grand || 0);
-      totalSales += amount;
 
-      const method = o.metodoPago || o.payment?.method || "";
+      const amount = Number(
+        o?.totals?.grand || 0
+      );
 
-      if (porMedioPago[method] !== undefined) {
-        porMedioPago[method] += amount;
+      total += amount;
+
+      const medioPago =
+        o?.payment?.method ||
+        "Efectivo";
+
+      console.log(
+        "💳 PAYMENT:",
+        medioPago,
+        "| MONTO:",
+        amount
+      );
+
+      if (
+        porMedioPago[medioPago] !== undefined
+      ) {
+        porMedioPago[medioPago] += amount;
       }
+
     });
 
+    /* =========================
+       RESPUESTA
+    ========================= */
     return res.json({
+
       resumen: {
-        totalSales,
+        total,
         cantidadVentas: orders.length,
       },
+
       porMedioPago,
+
     });
 
   } catch (error) {
-    console.error("❌ Error getCashClosure:", error);
+
+    console.error(
+      "❌ ERROR CIERRE MODAL:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Error al obtener cierre de caja",
+      error:
+        "Error obteniendo cierre de caja",
     });
+
   }
 };
 

@@ -29,7 +29,7 @@ import {
   logout,
   checkSession,
   getCashClosure,
-  createCashClosure,
+  getCashClosureModal,
 } from "../controllers/MongoController.js";
 
 const router = express.Router(); 
@@ -86,7 +86,7 @@ router.post(
    CASH CLOSURE
 ========================= */
 router.post("/cash-closure", createCashClosure);
-router.get("/orders/cash-closure", getCashClosure);
+router.get("/orders/cash-closure",getCashClosureModal);
 router.post("/auth/logout", logout);
 
 export default router;
