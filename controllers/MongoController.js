@@ -1637,6 +1637,12 @@ export const getCashClosureModal = async (req, res) => {
     /* =========================
        BUSCAR ÓRDENES
     ========================= */
+    console.log("📥 QUERY:", {
+      fecha,
+      sessionId
+    });
+    console.log("📆 INICIO:", inicio);
+    console.log("📆 FIN:", fin);
     const orders = await Order.find({
       "payment.status": "approved",
 
@@ -1649,7 +1655,8 @@ export const getCashClosureModal = async (req, res) => {
         ? { sessionId }
         : {}),
     }).lean();
-
+   console.log("📆 INICIO:", inicio);
+    console.log("📆 FIN:", fin);
     console.log("=================================");
     console.log("💰 CIERRE DE CAJA MODAL");
     console.log("📅 FECHA:", fecha);
@@ -1722,8 +1729,9 @@ export const getCashClosureModal = async (req, res) => {
     );
 
     return res.status(500).json({
-      error:
-        "Error obteniendo cierre de caja",
+      message: "Error obteniendo cierre",
+      error: error.message,
+      stack: error.stack,
     });
 
   }
