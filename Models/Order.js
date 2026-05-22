@@ -8,7 +8,6 @@ const orderSchema = new mongoose.Schema({
   },
 
   items: [
-
     {
       productId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -25,7 +24,6 @@ const orderSchema = new mongoose.Schema({
 
       subtotal: Number
     }
-
   ],
 
   totals: {
@@ -34,7 +32,10 @@ const orderSchema = new mongoose.Schema({
 
     grand: Number,
 
-    currency: { type: String, default: "ARS" }
+    currency: {
+      type: String,
+      default: "ARS"
+    }
 
   },
 
@@ -48,7 +49,15 @@ const orderSchema = new mongoose.Schema({
 
   },
 
-  createdBy: String
+  createdBy: String,
+
+  /* =========================
+     🔥 AGREGAR ESTO
+  ========================= */
+  sessionId: {
+    type: String,
+    default: null
+  }
 
 }, { timestamps: true });
 
