@@ -28,8 +28,9 @@ import {
   login,
   logout,
   checkSession,
-  getCashClosure,
+
   getCashClosureModal,
+  createCashClosure,
 } from "../controllers/MongoController.js";
 
 const router = express.Router(); 
