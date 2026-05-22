@@ -398,6 +398,7 @@ export const createOrder = async (req, res) => {
     });
 
     await order.save({ session });
+    console.log("🟢 ORDER GUARDADA:", order);
 
     await adjustStock(session, normItems, -1);
 
