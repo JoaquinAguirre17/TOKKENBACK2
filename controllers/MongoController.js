@@ -1751,7 +1751,12 @@ export const getCashClosureModal = async (req, res) => {
 };
 
 export const createCashClosure = async (req, res) => {
+
   try {
+
+    /* =========================
+       DATOS RECIBIDOS DEL FRONT
+    ========================= */
     const {
       sessionId,
       realByPayment,
@@ -1760,96 +1765,216 @@ export const createCashClosure = async (req, res) => {
       difference = 0,
     } = req.body;
 
-    console.log("🧾 CIERRE DE CAJA RECIBIDO:", req.body);
-
-    if (!sessionId) {
-      return res.status(400).json({ error: "Falta sessionId" });
-    }
-
-    const closure = await CashClosure.create({
-      sessionId,
-      realByPayment,
-      withdrawals,
-      observations,
-      difference,
-      createdAt: new Date(),
-    });
-
-    return res.json({
-      message: "Cierre de caja guardado correctamente",
-      closure,
-    });
-
-  } catch (error) {
-    console.error("❌ Error createCashClosure:", error);
-
-    return res.status(500).json({
-      error: "Error al crear cierre de caja",
-    });
-  }
-};
-export const logout = async (req, res) => {
-  try {
-    console.log("=================================");
-    console.log("🚪 LOGOUT EJECUTADO");
-    console.log("BODY:", req.body);
-    const { sessionId } = req.body;
-    console.log("🚪 LOGOUT EJECUTADO");
-    console.log("🆔 SESSION ID:", sessionId);
-
-    /* =========================
-       1. BUSCAR SESIÓN ACTIVA
-    ========================= */
-    const session = await UserSession.findOne({ sessionId });
-
-    if (!session) {
-      return res.status(404).json({
-        error: "Sesión no encontrada",
-      });
-    }
-
-    /* =========================
-       2. OBTENER FECHA DE SALIDA
-    ========================= */
-    const logoutAt = new Date();
-
-    const durationMinutes = Math.floor(
-      (logoutAt - session.loginAt) / 60000
+    console.log(
+      "🧾 CIERRE DE CAJA RECIBIDO:",
+      req.body
     );
 
     /* =========================
-       3. TRAER VENTAS DE LA SESIÓN
+       VALIDAR SESSION ID
     ========================= */
-    const orders = await Order.find({ sessionId });
+    if (!sessionId) {
 
-    let totalSales = 0;       // total general vendido
-    let cashExpected = 0;     // efectivo esperado
-    let cardTotal = 0;        // tarjeta u otros medios
+      return res.status(400).json({
+        error: "Falta sessionId"
+      });
 
-    orders.forEach((order) => {
+    }
+
+    /* =========================
+       BUSCAR SESIÓN ACTIVA
+       PARA OBTENER EL userId
+    ========================= */
+    const session =
+      await UserSession.findOne({
+        sessionId
+      });
+
+    if (!session) {
+
+      return res.status(404).json({
+        error: "Sesión no encontrada"
+      });
+
+    }
+
+    /* =========================
+       NORMALIZAR MEDIOS DE PAGO
+       EL FRONT ENVÍA:
+       Efectivo
+       Transferencia
+       Débito
+       Crédito
+       QR Openpay
+
+       EL MODELO ESPERA:
+       efectivo
+       transferencia
+       debito
+       credito
+       qr
+    ========================= */
+    const pagosNormalizados = {
+
+      efectivo:
+        Number(
+          realByPayment?.["Efectivo"] || 0
+        ),
+
+      transferencia:
+        Number(
+          realByPayment?.["Transferencia"] || 0
+        ),
+
+      debito:
+        Number(
+          realByPayment?.["Débito"] || 0
+        ),
+
+      credito:
+        Number(
+          realByPayment?.["Crédito"] || 0
+        ),
+
+      qr:
+        Number(
+          realByPayment?.["QR Openpay"] || 0
+        ),
+
+    };
+
+    /* =========================
+       CALCULAR TOTAL REAL
+    ========================= */
+    const realTotal =
+
+      pagosNormalizados.efectivo +
+      pagosNormalizados.transferencia +
+      pagosNormalizados.debito +
+      pagosNormalizados.credito +
+      pagosNormalizados.qr;
+
+    /* =========================
+       CREAR CIERRE DE CAJA
+    ========================= */
+    const closure =
+      await CashClosure.create({
+
+        userId:
+          session.userId,
+
+        sessionId,
+
+        date:
+          new Date(),
+
+        realByPayment:
+          pagosNormalizados,
+
+        realTotal,
+
+        withdrawals,
+
+        observations,
+
+        difference,
+
+      });
+
+    console.log(
+      "✅ CIERRE GUARDADO:",
+      closure._id
+    );
+
+    /* =========================
+       RESPUESTA EXITOSA
+    ========================= */
+    return res.json({
+
+      ok: true,
+
+      message:
+        "Cierre de caja guardado correctamente",
+
+      closure
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ Error createCashClosure:",
+      error
+    );
+
+    return res.status(500).json({
+
+      ok: false,
+
+      error:
+        "Error al crear cierre de caja"
+
+    });
+
+  }
+
+};
+export const logout = async (req, res) => {
+
+  try {
+
+    console.log("=================================");
+    console.log("🚪 LOGOUT EJECUTADO");
+    console.log("BODY:", req.body);
+
+    const { sessionId } = req.body;
+
+    console.log("🆔 SESSION ID:", sessionId);
+
+    /* =========================
+       1. BUSCAR SESIÓN
+    ========================= */
+    const session =
+      await UserSession.findOne({ sessionId });
+
+    if (!session) {
+
+      return res.status(404).json({
+        error: "Sesión no encontrada",
+      });
+
+    }
+
+    /* =========================
+       2. CALCULAR DURACIÓN
+    ========================= */
+    const logoutAt = new Date();
+
+    const durationMinutes =
+      Math.floor(
+        (logoutAt - session.loginAt) / 60000
+      );
+
+    /* =========================
+       3. OBTENER ÓRDENES (SOLO INFO)
+       NO CREAR CASH CLOSURE ACÁ
+    ========================= */
+    const orders =
+      await Order.find({ sessionId });
+
+    let totalSales = 0;
+
+    orders.forEach(order => {
       totalSales += order.total;
-
-      if (order.paymentMethod === "cash") {
-        cashExpected += order.total;
-      } else {
-        cardTotal += order.total;
-      }
     });
 
-    /* =========================
-       4. CIERRE DE CAJA
-    ========================= */
-    const closure = await CashClosure.create({
-      userId: session.userId,
-      sessionId,
-      totalSales,
-      cashExpected,
-      cardTotal,
-      closedAt: new Date(),
-    });
+    console.log(
+      "💰 TOTAL VENTAS SESIÓN:",
+      totalSales
+    );
 
     /* =========================
-       5. CERRAR SESIÓN
+       4. CERRAR SESIÓN
     ========================= */
     session.logoutAt = logoutAt;
     session.durationMinutes = durationMinutes;
@@ -1858,20 +1983,21 @@ export const logout = async (req, res) => {
     await session.save();
 
     /* =========================
-       6. RESPUESTA FINAL
+       5. RESPUESTA
     ========================= */
     return res.json({
-      message: "Logout + cierre de caja exitoso",
+      message: "Logout exitoso",
       durationMinutes,
-      closure,
     });
 
   } catch (error) {
+
     console.error("Error logout:", error);
 
     return res.status(500).json({
       error: "Error logout",
     });
+
   }
 };
 /* =====================================
