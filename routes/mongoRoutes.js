@@ -31,14 +31,15 @@ import {
 
   getCashClosureModal,
   createCashClosure,
-    getPersonalDetail,
+  getPersonalReport,
+  getPersonalDetail,
 } from "../controllers/MongoController.js";
 
-const router = express.Router(); 
+const router = express.Router();
 
 /* -------------------- AUTH -------------------- */
 
-router.post("/auth/login",login);
+router.post("/auth/login", login);
 
 router.post("/auth/check-session", checkSession);
 
@@ -58,7 +59,7 @@ router.delete("/products/:id", deleteProduct);
 /* -------------------- ÓRDENES -------------------- */
 // Rutas fijas primero
 router.post("/orders/web-mp", createWebOrderMP);
-    // Web + Mercado Pago
+// Web + Mercado Pago
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
@@ -80,7 +81,7 @@ router.post(
 );
 
 // POS / admin
-router.post("/orders", createOrder);               
+router.post("/orders", createOrder);
 
 // Rutas dinámicas con :id al final
 router.get("/orders/:id/pdf", downloadOrderPDF);
@@ -96,9 +97,15 @@ router.post(
   upload.single("archivo"),
   importarExcel
 );
-/* =========================
-   CONTROL PERSONAL
-========================= */
+/*****************************
+ * CONTROL PERSONAL
+ *****************************/
+
+router.get(
+  "/personal/report",
+  getPersonalReport
+);
+
 router.get(
   "/personal/detail/:username",
   getPersonalDetail
