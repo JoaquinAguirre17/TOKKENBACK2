@@ -1655,7 +1655,7 @@ export const getCashClosureModal = async (req, res) => {
         ? { sessionId }
         : {}),
     }).lean();
-   console.log("📆 INICIO:", inicio);
+    console.log("📆 INICIO:", inicio);
     console.log("📆 FIN:", fin);
     console.log("=================================");
     console.log("💰 CIERRE DE CAJA MODAL");
@@ -1775,3 +1775,196 @@ export const createCashClosure = async (req, res) => {
     });
   }
 };
+
+/* =====================================
+   CERRAR SESIONES ABANDONADAS
+   Busca sesiones activas con más de
+   24 horas y las cierra automáticamente
+===================================== */
+export const cerrarSesionesAbandonadas = async () => {
+
+  /* =========================
+     FECHA LÍMITE (24 HORAS)
+  ========================= */
+  const limite = new Date(
+    Date.now() - 24 * 60 * 60 * 1000
+  );
+
+  /* =========================
+     BUSCAR SESIONES ACTIVAS
+     MÁS ANTIGUAS QUE 24HS
+  ========================= */
+  const sesiones = await UserSession.find({
+    active: true,
+    loginAt: {
+      $lt: limite
+    }
+  });
+
+  /* =========================
+     RECORRER Y CERRAR
+     CADA SESIÓN
+  ========================= */
+  for (const session of sesiones) {
+
+    // Marcar como cerrada
+    session.active = false;
+
+    // Guardar fecha de salida
+    session.logoutAt = new Date();
+
+    // Persistir cambios
+    await session.save();
+
+  }
+
+};
+
+/* =====================================
+   DETALLE DE PERSONAL
+   Devuelve todas las sesiones de un
+   usuario dentro de un rango de fechas
+===================================== */
+export const getPersonalDetail = async (req, res) => {
+
+    try {
+
+      /* =========================
+         OBTENER PARÁMETROS
+      ========================= */
+      const { username } = req.params;
+
+      const {
+        desde,
+        hasta
+      } = req.query;
+
+      /* =========================
+         VALIDACIONES
+      ========================= */
+      if (!username) {
+
+        return res.status(400).json({
+          error: "Usuario requerido"
+        });
+
+      }
+
+      if (!desde || !hasta) {
+
+        return res.status(400).json({
+          error:
+            "Debe enviar desde y hasta"
+        });
+
+      }
+
+      /* =========================
+         ARMAR RANGO DE FECHAS
+      ========================= */
+      const inicio =
+        new Date(desde);
+
+      const fin =
+        new Date(hasta);
+
+      // Fin del día
+      fin.setHours(
+        23,
+        59,
+        59,
+        999
+      );
+
+      /* =========================
+         BUSCAR SESIONES
+      ========================= */
+      const sesiones =
+        await UserSession.find({
+
+          nombre: username,
+
+          loginAt: {
+            $gte: inicio,
+            $lte: fin
+          }
+
+        })
+          .sort({
+            loginAt: -1
+          });
+
+      /* =========================
+         FORMATEAR RESPUESTA
+      ========================= */
+      const detalle =
+        sesiones.map(session => {
+
+          const minutos =
+            session.durationMinutes || 0;
+
+          const horas =
+            Number(
+              (
+                minutos / 60
+              ).toFixed(2)
+            );
+
+          return {
+
+            sessionId:
+              session.sessionId,
+
+            usuario:
+              session.nombre,
+
+            rol:
+              session.rol,
+
+            fecha:
+              session.loginAt
+                ?.toISOString()
+                ?.split("T")[0],
+
+            entrada:
+              session.loginAt,
+
+            salida:
+              session.logoutAt,
+
+            minutos,
+
+            horas,
+
+            activa:
+              session.active
+
+          };
+
+        });
+
+      /* =========================
+         RESPUESTA FINAL
+      ========================= */
+      return res.json({
+        usuario: username,
+        totalSesiones:
+          detalle.length,
+        sesiones: detalle
+      });
+
+    } catch (error) {
+
+      console.error(
+        "ERROR GET PERSONAL DETAIL:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Error obteniendo detalle del usuario"
+      });
+
+    }
+
+  };
