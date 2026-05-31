@@ -1967,4 +1967,173 @@ export const getPersonalDetail = async (req, res) => {
 
     }
 
-  };
+  }; 
+  /* ==========================================
+   REPORTE GENERAL DE PERSONAL
+   AGRUPADO POR USUARIO
+========================================== */
+export const getPersonalReport = async (
+  req,
+  res
+) => {
+
+  try {
+
+    /* =========================
+       FECHAS
+    ========================= */
+    const {
+      desde,
+      hasta
+    } = req.query;
+
+    if (!desde || !hasta) {
+
+      return res.status(400).json({
+        error:
+          "Debe enviar desde y hasta"
+      });
+
+    }
+
+    /* =========================
+       RANGO DE FECHAS
+    ========================= */
+    const inicio =
+      new Date(desde);
+
+    const fin =
+      new Date(hasta);
+
+    fin.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    /* =========================
+       TRAER SESIONES
+    ========================= */
+    const sesiones =
+      await UserSession.find({
+
+        loginAt: {
+          $gte: inicio,
+          $lte: fin
+        }
+
+      });
+
+    /* =========================
+       AGRUPAR POR USUARIO
+    ========================= */
+    const resumen = {};
+
+    sesiones.forEach(session => {
+
+      const usuario =
+        session.nombre;
+
+      if (!resumen[usuario]) {
+
+        resumen[usuario] = {
+
+          usuario,
+
+          dias: new Set(),
+
+          minutos: 0,
+
+          sesiones: 0,
+
+          abandonadas: 0
+
+        };
+
+      }
+
+      /* =========================
+         CONTAR DÍAS TRABAJADOS
+      ========================= */
+      const fecha =
+        session.loginAt
+          .toISOString()
+          .split("T")[0];
+
+      resumen[usuario]
+        .dias
+        .add(fecha);
+
+      /* =========================
+         SUMAR TIEMPO
+      ========================= */
+      resumen[usuario]
+        .minutos +=
+        session.durationMinutes || 0;
+
+      resumen[usuario]
+        .sesiones++;
+
+      /* =========================
+         SESIONES ABANDONADAS
+      ========================= */
+      if (session.active) {
+
+        resumen[usuario]
+          .abandonadas++;
+
+      }
+
+    });
+
+    /* =========================
+       FORMATEAR RESPUESTA
+    ========================= */
+    const resultado =
+      Object.values(resumen)
+        .map(item => ({
+
+          usuario:
+            item.usuario,
+
+          diasTrabajados:
+            item.dias.size,
+
+          horas:
+            Number(
+              (
+                item.minutos / 60
+              ).toFixed(2)
+            ),
+
+          sesiones:
+            item.sesiones,
+
+          abandonadas:
+            item.abandonadas
+
+        }));
+
+    /* =========================
+       RESPUESTA
+    ========================= */
+    return res.json(resultado);
+
+  } catch (error) {
+
+    console.error(
+      "ERROR PERSONAL REPORT:",
+      error
+    );
+
+    return res.status(500).json({
+
+      error:
+        "Error obteniendo reporte"
+
+    });
+
+  }
+
+};
