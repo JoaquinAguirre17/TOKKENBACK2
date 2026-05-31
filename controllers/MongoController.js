@@ -1597,6 +1597,9 @@ export const login = async (req, res) => {
 };
 export const logout = async (req, res) => {
   try {
+    console.log("=================================");
+    console.log("🚪 LOGOUT EJECUTADO");
+    console.log("BODY:", req.body);
     const { sessionId } = req.body;
     console.log("🚪 LOGOUT EJECUTADO");
     console.log("🆔 SESSION ID:", sessionId);
