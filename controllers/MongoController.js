@@ -1598,6 +1598,8 @@ export const login = async (req, res) => {
 export const logout = async (req, res) => {
   try {
     const { sessionId } = req.body;
+    console.log("🚪 LOGOUT EJECUTADO");
+    console.log("🆔 SESSION ID:", sessionId);
 
     /* =========================
        1. BUSCAR SESIÓN ACTIVA
