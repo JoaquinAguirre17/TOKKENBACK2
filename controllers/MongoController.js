@@ -1827,150 +1827,150 @@ export const cerrarSesionesAbandonadas = async () => {
 ===================================== */
 export const getPersonalDetail = async (req, res) => {
 
-    try {
+  try {
 
-      /* =========================
-         OBTENER PARÁMETROS
-      ========================= */
-      const { username } = req.params;
+    /* =========================
+       OBTENER PARÁMETROS
+    ========================= */
+    const { username } = req.params;
 
-      const {
-        desde,
-        hasta
-      } = req.query;
+    const {
+      desde,
+      hasta
+    } = req.query;
 
-      /* =========================
-         VALIDACIONES
-      ========================= */
-      if (!username) {
+    /* =========================
+       VALIDACIONES
+    ========================= */
+    if (!username) {
 
-        return res.status(400).json({
-          error: "Usuario requerido"
-        });
-
-      }
-
-      if (!desde || !hasta) {
-
-        return res.status(400).json({
-          error:
-            "Debe enviar desde y hasta"
-        });
-
-      }
-
-      /* =========================
-         ARMAR RANGO DE FECHAS
-      ========================= */
-      const inicio =
-        new Date(desde);
-
-      const fin =
-        new Date(hasta);
-
-      // Fin del día
-      fin.setHours(
-        23,
-        59,
-        59,
-        999
-      );
-
-      /* =========================
-         BUSCAR SESIONES
-      ========================= */
-      const sesiones =
-        await UserSession.find({
-
-          nombre: username,
-
-          loginAt: {
-            $gte: inicio,
-            $lte: fin
-          }
-
-        })
-          .sort({
-            loginAt: -1
-          });
-
-      /* =========================
-         FORMATEAR RESPUESTA
-      ========================= */
-      const detalle =
-        sesiones.map(session => {
-
-          const minutos =
-            session.durationMinutes || 0;
-
-          const horas =
-            Number(
-              (
-                minutos / 60
-              ).toFixed(2)
-            );
-
-          return {
-
-            sessionId:
-              session.sessionId,
-
-            usuario:
-              session.nombre,
-
-            rol:
-              session.rol,
-
-            fecha:
-              session.loginAt
-                ?.toISOString()
-                ?.split("T")[0],
-
-            entrada:
-              session.loginAt,
-
-            salida:
-              session.logoutAt,
-
-            minutos,
-
-            horas,
-
-            activa:
-              session.active
-
-          };
-
-        });
-
-      /* =========================
-         RESPUESTA FINAL
-      ========================= */
-      return res.json({
-        usuario: username,
-        totalSesiones:
-          detalle.length,
-        sesiones: detalle
-      });
-
-    } catch (error) {
-
-      console.error(
-        "ERROR GET PERSONAL DETAIL:",
-        error
-      );
-
-      return res.status(500).json({
-        error:
-          "Error obteniendo detalle del usuario"
+      return res.status(400).json({
+        error: "Usuario requerido"
       });
 
     }
 
-  }; 
-  /* ==========================================
-   REPORTE GENERAL DE PERSONAL
-   AGRUPADO POR USUARIO
+    if (!desde || !hasta) {
+
+      return res.status(400).json({
+        error:
+          "Debe enviar desde y hasta"
+      });
+
+    }
+
+    /* =========================
+       ARMAR RANGO DE FECHAS
+    ========================= */
+    const inicio =
+      new Date(desde);
+
+    const fin =
+      new Date(hasta);
+
+    // Fin del día
+    fin.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    /* =========================
+       BUSCAR SESIONES
+    ========================= */
+    const sesiones =
+      await UserSession.find({
+
+        nombre: username,
+
+        loginAt: {
+          $gte: inicio,
+          $lte: fin
+        }
+
+      })
+        .sort({
+          loginAt: -1
+        });
+
+    /* =========================
+       FORMATEAR RESPUESTA
+    ========================= */
+    const detalle =
+      sesiones.map(session => {
+
+        const minutos =
+          session.durationMinutes || 0;
+
+        const horas =
+          Number(
+            (
+              minutos / 60
+            ).toFixed(2)
+          );
+
+        return {
+
+          sessionId:
+            session.sessionId,
+
+          usuario:
+            session.nombre,
+
+          rol:
+            session.rol,
+
+          fecha:
+            session.loginAt
+              ?.toISOString()
+              ?.split("T")[0],
+
+          entrada:
+            session.loginAt,
+
+          salida:
+            session.logoutAt,
+
+          minutos,
+
+          horas,
+
+          activa:
+            session.active
+
+        };
+
+      });
+
+    /* =========================
+       RESPUESTA FINAL
+    ========================= */
+    return res.json({
+      usuario: username,
+      totalSesiones:
+        detalle.length,
+      sesiones: detalle
+    });
+
+  } catch (error) {
+
+    console.error(
+      "ERROR GET PERSONAL DETAIL:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "Error obteniendo detalle del usuario"
+    });
+
+  }
+
+};
+/* ==========================================
+ REPORTE GENERAL DE PERSONAL
+ AGRUPADO POR USUARIO
 ========================================== */
 export const getPersonalReport = async (
   req,
@@ -2066,22 +2066,65 @@ export const getPersonalReport = async (
         .add(fecha);
 
       /* =========================
-         SUMAR TIEMPO
+     CALCULAR MINUTOS
+     Si la sesión está cerrada:
+     usa durationMinutes
+  
+     Si sigue activa:
+     calcula desde loginAt
+  ========================= */
+      let minutosSesion = 0;
+
+      if (
+        session.durationMinutes !== null &&
+        session.durationMinutes !== undefined
+      ) {
+
+        minutosSesion =
+          session.durationMinutes;
+
+      } else {
+
+        minutosSesion = Math.floor(
+          (
+            new Date() -
+            new Date(session.loginAt)
+          ) / 60000
+        );
+
+      }
+
+      /* =========================
+         SUMAR MINUTOS
       ========================= */
       resumen[usuario]
-        .minutos +=
-        session.durationMinutes || 0;
+        .minutos += minutosSesion;
 
+      /* =========================
+         CONTAR SESIÓN
+      ========================= */
       resumen[usuario]
         .sesiones++;
 
       /* =========================
          SESIONES ABANDONADAS
+      
+         Activa hace más de 24 horas
       ========================= */
       if (session.active) {
 
-        resumen[usuario]
-          .abandonadas++;
+        const horasActiva =
+          (
+            new Date() -
+            new Date(session.loginAt)
+          ) / (1000 * 60 * 60);
+
+        if (horasActiva > 24) {
+
+          resumen[usuario]
+            .abandonadas++;
+
+        }
 
       }
 
