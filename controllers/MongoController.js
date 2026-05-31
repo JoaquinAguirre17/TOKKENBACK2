@@ -40,6 +40,7 @@ const TZ = "America/Argentina/Cordoba";
 // opcional: default global
 dayjs.tz.setDefault(TZ);
 import { MercadoPagoConfig, Preference } from "mercadopago";
+import CashClosure from "../Models/CashClosure.js";
 
 const mpClient = new Preference({ access_token: process.env.MP_ACCESS_TOKEN });
 
