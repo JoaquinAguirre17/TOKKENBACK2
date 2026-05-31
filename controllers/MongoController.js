@@ -1595,92 +1595,7 @@ export const login = async (req, res) => {
   }
 
 };
-export const logout = async (req, res) => {
-  try {
-    console.log("=================================");
-    console.log("🚪 LOGOUT EJECUTADO");
-    console.log("BODY:", req.body);
-    const { sessionId } = req.body;
-    console.log("🚪 LOGOUT EJECUTADO");
-    console.log("🆔 SESSION ID:", sessionId);
 
-    /* =========================
-       1. BUSCAR SESIÓN ACTIVA
-    ========================= */
-    const session = await UserSession.findOne({ sessionId });
-
-    if (!session) {
-      return res.status(404).json({
-        error: "Sesión no encontrada",
-      });
-    }
-
-    /* =========================
-       2. OBTENER FECHA DE SALIDA
-    ========================= */
-    const logoutAt = new Date();
-
-    const durationMinutes = Math.floor(
-      (logoutAt - session.loginAt) / 60000
-    );
-
-    /* =========================
-       3. TRAER VENTAS DE LA SESIÓN
-    ========================= */
-    const orders = await Order.find({ sessionId });
-
-    let totalSales = 0;       // total general vendido
-    let cashExpected = 0;     // efectivo esperado
-    let cardTotal = 0;        // tarjeta u otros medios
-
-    orders.forEach((order) => {
-      totalSales += order.total;
-
-      if (order.paymentMethod === "cash") {
-        cashExpected += order.total;
-      } else {
-        cardTotal += order.total;
-      }
-    });
-
-    /* =========================
-       4. CIERRE DE CAJA
-    ========================= */
-    const closure = await CashClosure.create({
-      userId: session.userId,
-      sessionId,
-      totalSales,
-      cashExpected,
-      cardTotal,
-      closedAt: new Date(),
-    });
-
-    /* =========================
-       5. CERRAR SESIÓN
-    ========================= */
-    session.logoutAt = logoutAt;
-    session.durationMinutes = durationMinutes;
-    session.active = false;
-
-    await session.save();
-
-    /* =========================
-       6. RESPUESTA FINAL
-    ========================= */
-    return res.json({
-      message: "Logout + cierre de caja exitoso",
-      durationMinutes,
-      closure,
-    });
-
-  } catch (error) {
-    console.error("Error logout:", error);
-
-    return res.status(500).json({
-      error: "Error logout",
-    });
-  }
-};
 export const checkSession = async (req, res) => {
   try {
     const { sessionId } = req.body;
@@ -1870,7 +1785,92 @@ export const createCashClosure = async (req, res) => {
     });
   }
 };
+export const logout = async (req, res) => {
+  try {
+    console.log("=================================");
+    console.log("🚪 LOGOUT EJECUTADO");
+    console.log("BODY:", req.body);
+    const { sessionId } = req.body;
+    console.log("🚪 LOGOUT EJECUTADO");
+    console.log("🆔 SESSION ID:", sessionId);
 
+    /* =========================
+       1. BUSCAR SESIÓN ACTIVA
+    ========================= */
+    const session = await UserSession.findOne({ sessionId });
+
+    if (!session) {
+      return res.status(404).json({
+        error: "Sesión no encontrada",
+      });
+    }
+
+    /* =========================
+       2. OBTENER FECHA DE SALIDA
+    ========================= */
+    const logoutAt = new Date();
+
+    const durationMinutes = Math.floor(
+      (logoutAt - session.loginAt) / 60000
+    );
+
+    /* =========================
+       3. TRAER VENTAS DE LA SESIÓN
+    ========================= */
+    const orders = await Order.find({ sessionId });
+
+    let totalSales = 0;       // total general vendido
+    let cashExpected = 0;     // efectivo esperado
+    let cardTotal = 0;        // tarjeta u otros medios
+
+    orders.forEach((order) => {
+      totalSales += order.total;
+
+      if (order.paymentMethod === "cash") {
+        cashExpected += order.total;
+      } else {
+        cardTotal += order.total;
+      }
+    });
+
+    /* =========================
+       4. CIERRE DE CAJA
+    ========================= */
+    const closure = await CashClosure.create({
+      userId: session.userId,
+      sessionId,
+      totalSales,
+      cashExpected,
+      cardTotal,
+      closedAt: new Date(),
+    });
+
+    /* =========================
+       5. CERRAR SESIÓN
+    ========================= */
+    session.logoutAt = logoutAt;
+    session.durationMinutes = durationMinutes;
+    session.active = false;
+
+    await session.save();
+
+    /* =========================
+       6. RESPUESTA FINAL
+    ========================= */
+    return res.json({
+      message: "Logout + cierre de caja exitoso",
+      durationMinutes,
+      closure,
+    });
+
+  } catch (error) {
+    console.error("Error logout:", error);
+
+    return res.status(500).json({
+      error: "Error logout",
+    });
+  }
+};
 /* =====================================
    CERRAR SESIONES ABANDONADAS
    Busca sesiones activas con más de
