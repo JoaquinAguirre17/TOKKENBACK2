@@ -23,6 +23,8 @@ import User from "../Models/User.js";
 import UserSession
   from "../Models/UserSession.js";
 
+  import "../Models/CashClosure.js";
+
 const JWT_SECRET =
   process.env.JWT_SECRET ||
   "tokken_secret";
