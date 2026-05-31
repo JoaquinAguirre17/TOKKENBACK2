@@ -1437,31 +1437,86 @@ export const exportarProductosExcel = async (req, res) => {
 
 //Funcion de login
 export const login = async (req, res) => {
-  try {
-    const { username, password } = req.body;
 
-    // 1. Buscar usuario
-    const user = await User.findOne({ username });
+  try {
+
+    const {
+      username,
+      password
+    } = req.body;
+
+    /* =========================
+       BUSCAR USUARIO
+    ========================= */
+    const user =
+      await User.findOne({
+        username
+      });
 
     if (!user) {
+
       return res.status(401).json({
         error: "Usuario incorrecto",
       });
+
     }
 
-    // 2. Validar password
-    const validPassword = await bcrypt.compare(
-      password,
-      user.password
-    );
+    /* =========================
+       VALIDAR CONTRASEÑA
+    ========================= */
+    const validPassword =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
 
     if (!validPassword) {
+
       return res.status(401).json({
         error: "Contraseña incorrecta",
       });
+
     }
 
-    // 3. Generar JWT
+    /* =========================
+       CERRAR SESIONES ACTIVAS
+       ANTERIORES DEL USUARIO
+    ========================= */
+    const sesionesActivas =
+      await UserSession.find({
+
+        userId: user._id,
+
+        active: true
+
+      });
+
+    for (const session of sesionesActivas) {
+
+      const logoutAt =
+        new Date();
+
+      const durationMinutes =
+        Math.floor(
+          (logoutAt - session.loginAt)
+          / 60000
+        );
+
+      session.logoutAt =
+        logoutAt;
+
+      session.durationMinutes =
+        durationMinutes;
+
+      session.active = false;
+
+      await session.save();
+
+    }
+
+    /* =========================
+       GENERAR TOKEN JWT
+    ========================= */
     const token = jwt.sign(
       {
         id: user._id,
@@ -1469,41 +1524,76 @@ export const login = async (req, res) => {
         username: user.username,
       },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      {
+        expiresIn: "7d"
+      }
     );
 
-    // 4. Crear sessionId único
-    const sessionId = crypto.randomUUID();
+    /* =========================
+       GENERAR SESSION ID
+    ========================= */
+    const sessionId =
+      crypto.randomUUID();
 
-    // 5. Guardar sesión en DB
+    /* =========================
+       CREAR NUEVA SESIÓN
+    ========================= */
     await UserSession.create({
+
       userId: user._id,
+
       username: user.username,
+
       nombre: user.nombre,
+
       rol: user.rol,
+
       sessionId,
+
       loginAt: new Date(),
+
       active: true,
+
     });
 
-    // 6. Respuesta
+    /* =========================
+       RESPUESTA
+    ========================= */
     return res.json({
+
       token,
+
       sessionId,
+
       user: {
+
         id: user._id,
+
         nombre: user.nombre,
+
         username: user.username,
+
         rol: user.rol,
+
       },
+
     });
 
   } catch (error) {
-    console.error(error);
+
+    console.error(
+      "ERROR LOGIN:",
+      error
+    );
+
     return res.status(500).json({
-      error: "Error login",
+
+      error: "Error login"
+
     });
+
   }
+
 };
 export const logout = async (req, res) => {
   try {
