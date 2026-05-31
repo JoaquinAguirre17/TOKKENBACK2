@@ -33,6 +33,7 @@ import {
   createCashClosure,
   getPersonalReport,
   getPersonalDetail,
+  cerrarSesionesAbandonadas,
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -100,7 +101,13 @@ router.post(
 /*****************************
  * CONTROL PERSONAL
  *****************************/
-
+/* =========================
+   CONTROL PERSONAL
+========================= */
+router.post(
+  "/personal/cerrar-abandonadas",
+  cerrarSesionesAbandonadas
+);
 router.get(
   "/personal/report",
   getPersonalReport

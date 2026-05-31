@@ -1781,40 +1781,104 @@ export const createCashClosure = async (req, res) => {
    Busca sesiones activas con más de
    24 horas y las cierra automáticamente
 ===================================== */
-export const cerrarSesionesAbandonadas = async () => {
+/* ==================================================
+   CERRAR SESIONES ABANDONADAS
 
-  /* =========================
-     FECHA LÍMITE (24 HORAS)
-  ========================= */
-  const limite = new Date(
-    Date.now() - 24 * 60 * 60 * 1000
-  );
+   Busca sesiones activas que superen 24 horas
+   y las cierra automáticamente.
 
-  /* =========================
-     BUSCAR SESIONES ACTIVAS
-     MÁS ANTIGUAS QUE 24HS
-  ========================= */
-  const sesiones = await UserSession.find({
-    active: true,
-    loginAt: {
-      $lt: limite
+   Esto sirve para limpiar sesiones viejas que
+   quedaron abiertas por errores, cierres del
+   navegador o caídas del sistema.
+================================================== */
+export const cerrarSesionesAbandonadas = async (
+  req,
+  res
+) => {
+
+  try {
+
+    /* =========================
+       FECHA LÍMITE (24 HORAS)
+    ========================= */
+    const limite = new Date(
+      Date.now() - (24 * 60 * 60 * 1000)
+    );
+
+    /* =========================
+       BUSCAR SESIONES VIEJAS
+    ========================= */
+    const sesiones =
+      await UserSession.find({
+
+        active: true,
+
+        loginAt: {
+          $lt: limite
+        }
+
+      });
+
+    let cerradas = 0;
+
+    /* =========================
+       CERRAR UNA POR UNA
+    ========================= */
+    for (const session of sesiones) {
+
+      const logoutAt =
+        new Date();
+
+      const durationMinutes =
+        Math.floor(
+          (logoutAt - session.loginAt)
+          / 60000
+        );
+
+      session.logoutAt =
+        logoutAt;
+
+      session.durationMinutes =
+        durationMinutes;
+
+      session.active = false;
+
+      await session.save();
+
+      cerradas++;
+
     }
-  });
 
-  /* =========================
-     RECORRER Y CERRAR
-     CADA SESIÓN
-  ========================= */
-  for (const session of sesiones) {
+    /* =========================
+       RESPUESTA
+    ========================= */
+    return res.json({
 
-    // Marcar como cerrada
-    session.active = false;
+      ok: true,
 
-    // Guardar fecha de salida
-    session.logoutAt = new Date();
+      sesionesEncontradas:
+        sesiones.length,
 
-    // Persistir cambios
-    await session.save();
+      sesionesCerradas:
+        cerradas
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "ERROR CERRAR SESIONES:",
+      error
+    );
+
+    return res.status(500).json({
+
+      ok: false,
+
+      error:
+        "Error cerrando sesiones"
+
+    });
 
   }
 
