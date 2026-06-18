@@ -25,30 +25,30 @@ const seedUsers = async () => {
 
       {
         username: "andrea",
-        password: "1234",
+        password: "bautiguille2026",
         nombre: "Andrea",
         rol: "owner",
       },
 
       {
         username: "joaquin",
-        password: "1234",
+        password: "Golden3011curry",
         nombre: "Joaquin",
         rol: "admin",
       },
 
       {
-        username: "thiago",
-        password: "1234",
-        nombre: "Thiago",
+        username: "tiago",
+        password: "bateria2026",
+        nombre: "Tiago",
         rol: "vendedor",
       },
 
       {
-        username: "victoria",
-        password: "1234",
-        nombre: "Victoria",
-        rol: "vendedor",
+        username: "gonzalo",
+        password: "chacarera2026",
+        nombre: "gonzalo",
+        rol: "owner",
       },
 
     ];
