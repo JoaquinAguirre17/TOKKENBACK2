@@ -17,9 +17,7 @@ const app = express();
    SEED USUARIOS
 ---------------------------------------------------- */
 
-/*
-const seedUsers = async () => {*/
-const updatePasswords = async () => {
+/*const updatePasswords = async () => {
 
   try {
 
@@ -89,8 +87,8 @@ const updatePasswords = async () => {
 
   }
 
-};
-  /*
+}; */
+const seedUsers = async () => {
   try {
 
     const users = [
@@ -168,7 +166,7 @@ const updatePasswords = async () => {
 
   }
 
-};*/
+};
 
 /* ----------------------------------------------------
    ✅ CORS
@@ -301,8 +299,8 @@ console.log(
     );
 
     // ✅ CREAR USUARIOS
-    /*await seedUsers(); */
-    await updatePasswords();
+    await seedUsers(); 
+    /*await updatePasswords();*/
 
     // ✅ RUTAS
     app.use("/api", mongoRoutes);

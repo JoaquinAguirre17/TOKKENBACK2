@@ -23,7 +23,7 @@ import User from "../Models/User.js";
 import UserSession
   from "../Models/UserSession.js";
 
-  import "../Models/CashClosure.js";
+import "../Models/CashClosure.js";
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
@@ -1528,7 +1528,7 @@ export const login = async (req, res) => {
       },
       JWT_SECRET,
       {
-        expiresIn: "7d"
+        expiresIn: "6h"
       }
     );
 
@@ -1600,15 +1600,49 @@ export const login = async (req, res) => {
 };
 
 export const checkSession = async (req, res) => {
+
   try {
+
     const { sessionId } = req.body;
 
-    const session = await UserSession.findOne({ sessionId });
+    const session =
+      await UserSession.findOne({
+        sessionId
+      });
 
     if (!session || !session.active) {
+
       return res.status(401).json({
         error: "Sesión inválida o expirada",
       });
+
+    }
+
+    /* =========================
+       VALIDAR LÍMITE DE 6 HORAS
+    ========================= */
+    const horasTranscurridas =
+      (Date.now() - session.loginAt.getTime()) /
+      (1000 * 60 * 60);
+
+    if (horasTranscurridas >= 6) {
+
+      session.active = false;
+
+      session.logoutAt = new Date();
+
+      session.durationMinutes =
+        Math.floor(
+          (session.logoutAt - session.loginAt)
+          / 60000
+        );
+
+      await session.save();
+
+      return res.status(401).json({
+        error: "La sesión expiró (6 horas)"
+      });
+
     }
 
     return res.json({
@@ -1617,10 +1651,13 @@ export const checkSession = async (req, res) => {
     });
 
   } catch (error) {
+
     return res.status(500).json({
       error: "Error validando sesión",
     });
+
   }
+
 };
 
 export const getCashClosureModal = async (req, res) => {
@@ -2026,7 +2063,7 @@ export const cerrarSesionesAbandonadas = async (
        FECHA LÍMITE (24 HORAS)
     ========================= */
     const limite = new Date(
-      Date.now() - (24 * 60 * 60 * 1000)
+      Date.now() - (6 * 60 * 60 * 1000)
     );
 
     /* =========================
