@@ -17,8 +17,80 @@ const app = express();
    SEED USUARIOS
 ---------------------------------------------------- */
 
-const seedUsers = async () => {
+/*
+const seedUsers = async () => {*/
+const updatePasswords = async () => {
 
+  try {
+
+    const users = [
+
+      {
+        username: "andrea",
+        password: "bautiguille2026",
+      },
+
+      {
+        username: "joaquin",
+        password: "Golden3011curry",
+      },
+
+      {
+        username: "tiago",
+        password: "bateria2026",
+      },
+
+      {
+        username: "gonzalo",
+        password: "chacarera2026",
+      },
+
+    ];
+
+    for (const user of users) {
+
+      const hashedPassword =
+        await bcrypt.hash(
+          user.password,
+          10
+        );
+
+      const result =
+        await User.updateOne(
+          {
+            username:
+              user.username,
+          },
+          {
+            $set: {
+              password:
+                hashedPassword,
+            },
+          }
+        );
+
+      console.log(
+        `🔑 ${user.username} actualizado`,
+        result.modifiedCount
+      );
+
+    }
+
+    console.log(
+      "✅ Contraseñas actualizadas"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ Error actualizando contraseñas:",
+      error
+    );
+
+  }
+
+};
+  /*
   try {
 
     const users = [
@@ -96,7 +168,7 @@ const seedUsers = async () => {
 
   }
 
-};
+};*/
 
 /* ----------------------------------------------------
    ✅ CORS
@@ -229,7 +301,8 @@ console.log(
     );
 
     // ✅ CREAR USUARIOS
-    await seedUsers();
+    /*await seedUsers(); */
+    await updatePasswords();
 
     // ✅ RUTAS
     app.use("/api", mongoRoutes);
