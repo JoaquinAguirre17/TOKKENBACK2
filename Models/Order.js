@@ -41,13 +41,18 @@ const orderSchema = new mongoose.Schema({
 
   payment: {
 
-    method: String,
+  method: String,
 
-    status: String,
-
-    amount: Number
-
+  installments: {
+    type: Number,
+    default: 1
   },
+
+  status: String,
+
+  amount: Number
+
+},
 
   createdBy: String,
 

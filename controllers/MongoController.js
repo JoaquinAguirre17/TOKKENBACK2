@@ -302,79 +302,162 @@ export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
+
     await session.startTransaction();
 
     const {
       productos,
       metodoPago,
+      cuotas = 1,
       vendedor,
       total,
-      sessionId // 🔥 CLAVE
+      sessionId
     } = req.body;
 
     console.log("VENTA:", req.body);
+
     /* =========================
-           🔥 LOG DE LA ORDEN RECIBIDA
-        ========================= */
-    console.log("===================================");
-    console.log("🧾 NUEVA ORDEN RECIBIDA");
-    console.log("Productos:", JSON.stringify(productos, null, 2));
-    console.log("Método de pago:", metodoPago);
-    console.log("Vendedor:", vendedor);
-    console.log("Total:", total);
-    console.log("BODY COMPLETO:", JSON.stringify(req.body, null, 2));
-    console.log("===================================");
+       VALIDAR PRODUCTOS
+    ========================= */
     if (!productos?.length) {
-      return res.status(400).json({ message: "No hay productos" });
+
+      return res.status(400).json({
+        message: "No hay productos"
+      });
+
     }
 
-    const ids = productos.map(p => p.productId);
-
-    const productosDb = await Product.find({
-      _id: { $in: ids }
-    }).lean();
-
-    const mapProd = new Map(
-      productosDb.map(p => [String(p._id), p])
+    /* =========================
+       OBTENER PRODUCTOS DB
+    ========================= */
+    const ids = productos.map(
+      p => p.productId
     );
 
-    const normItems = productos.map(p => {
+    const productosDb =
+      await Product.find({
+        _id: { $in: ids }
+      }).lean();
 
-      const db = mapProd.get(String(p.productId));
+    const mapProd = new Map(
+      productosDb.map(
+        p => [String(p._id), p]
+      )
+    );
 
-      const price = Number(
-        p.precio ??
-        db?.pricing?.sale ??
-        db?.pricing?.list ??
+    /* =========================
+       NORMALIZAR ITEMS
+    ========================= */
+    const normItems =
+      productos.map(p => {
+
+        const db =
+          mapProd.get(
+            String(p.productId)
+          );
+
+        const price = Number(
+          p.precio ??
+          db?.pricing?.sale ??
+          db?.pricing?.list ??
+          0
+        );
+
+        const qty = Number(
+          p.cantidad ?? 1
+        );
+
+        return {
+
+          productId: db._id,
+
+          title: db.title,
+
+          sku:
+            db?.variants?.[0]?.sku,
+
+          price,
+
+          qty,
+
+          subtotal:
+            price * qty
+
+        };
+
+      });
+
+    /* =========================
+       TOTAL PRODUCTOS
+    ========================= */
+    const itemsTotal =
+      normItems.reduce(
+        (a, b) => a + b.subtotal,
         0
       );
 
-      const qty = Number(p.cantidad ?? 1);
+    /* =========================
+       RECARGO TARJETA CRÉDITO
+    ========================= */
+    let porcentajeRecargo = 0;
 
-      return {
-        productId: db._id,
-        title: db.title,
-        sku: db?.variants?.[0]?.sku,
-        price,
-        qty,
-        subtotal: price * qty
-      };
+    if (metodoPago === "Crédito") {
 
-    });
+      if (Number(cuotas) === 3) {
 
-    const itemsTotal = normItems.reduce(
-      (a, b) => a + b.subtotal,
-      0
-    );
+        porcentajeRecargo = 10;
 
-    if (Math.round(itemsTotal) !== Math.round(total)) {
-      throw new Error("Total inconsistente");
+      }
+
+      if (Number(cuotas) === 6) {
+
+        porcentajeRecargo = 20;
+
+      }
+
     }
 
-    const orderNumber = await generateOrderNumber();
+    /* =========================
+       TOTAL FINAL
+    ========================= */
+    const totalFinal =
 
-    const now = dayjs().tz(TZ).toDate();
+      itemsTotal +
 
+      (
+        itemsTotal *
+        porcentajeRecargo /
+        100
+      );
+
+    /* =========================
+       VALIDAR TOTAL
+    ========================= */
+    if (
+      Math.round(totalFinal) !==
+      Math.round(total)
+    ) {
+
+      throw new Error(
+        "Total inconsistente"
+      );
+
+    }
+
+    /* =========================
+       NÚMERO DE ORDEN
+    ========================= */
+    const orderNumber =
+      await generateOrderNumber();
+
+    const now =
+      dayjs()
+        .tz(TZ)
+        .toDate();
+
+    /* =========================
+       CREAR ORDEN
+    ========================= */
     const order = new Order({
 
       orderNumber,
@@ -382,52 +465,97 @@ export const createOrder = async (req, res) => {
       items: normItems,
 
       totals: {
+
         items: itemsTotal,
-        grand: itemsTotal
+
+        grand: totalFinal
+
       },
 
       payment: {
+
         method: metodoPago,
+
+        installments:
+          Number(cuotas),
+
         status: "approved",
-        amount: itemsTotal,
+
+        amount: totalFinal,
+
         paidAt: now
+
       },
 
       createdBy: vendedor,
 
-      sessionId, // 🔥 IMPORTANTE PARA CAJA
+      sessionId,
 
       createdAt: now
+
     });
 
-    await order.save({ session });
-    console.log("🟢 ORDER GUARDADA:", order);
+    /* =========================
+       GUARDAR ORDEN
+    ========================= */
+    await order.save({
+      session
+    });
 
-    await adjustStock(session, normItems, -1);
+    console.log(
+      "🟢 ORDER GUARDADA:",
+      order
+    );
 
+    /* =========================
+       DESCONTAR STOCK
+    ========================= */
+    await adjustStock(
+      session,
+      normItems,
+      -1
+    );
+
+    /* =========================
+       COMMIT
+    ========================= */
     await session.commitTransaction();
 
     return res.status(201).json({
-      message: "Venta registrada",
+
+      message:
+        "Venta registrada",
+
       order
+
     });
 
   } catch (error) {
 
     await session.abortTransaction();
 
-    console.error("❌ ERROR CREANDO ORDEN:", error);
+    console.error(
+      "❌ ERROR CREANDO ORDEN:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Error al crear orden",
-      error: error.message
+
+      message:
+        "Error al crear orden",
+
+      error:
+        error.message
+
     });
 
   } finally {
-    session.endSession();
-  }
-};
 
+    session.endSession();
+
+  }
+
+};
 export const confirmOrder = async (req, res) => {
   const { draftOrderId, action } = req.body;
   if (!draftOrderId || !action) return res.status(400).json({ message: "Faltan draftOrderId o action" });
