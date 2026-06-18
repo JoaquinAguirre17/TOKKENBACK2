@@ -202,7 +202,7 @@ export const resolveChannel = (tags = []) => {
 };
 
 // -------------------------
-// Productos
+// Productoss
 // -------------------------
 export const getProducts = async (_req, res) => {
   try {
