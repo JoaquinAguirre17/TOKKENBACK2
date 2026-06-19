@@ -1323,7 +1323,7 @@ export const exportarVentasExcel = async (req, res) => {
     const ingresosAnterior = body.ingresosAnterior || 0;
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "BI POS System";
+    workbook.creator = "BI PRO POS SYSTEM";
     workbook.created = new Date();
 
     /* =========================
@@ -1331,6 +1331,7 @@ export const exportarVentasExcel = async (req, res) => {
     ========================= */
 
     const totalVentas = resumen.total || 0;
+
     const totalIngresos = ingresos.reduce(
       (acc, i) => acc + (i.total || 0),
       0
@@ -1342,10 +1343,6 @@ export const exportarVentasExcel = async (req, res) => {
     const ticketPromedio =
       cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
 
-    /* =========================
-       CRECIMIENTO
-    ========================= */
-
     const crecimientoVentas =
       ventasAnterior > 0
         ? ((totalVentas - ventasAnterior) / ventasAnterior) * 100
@@ -1355,6 +1352,9 @@ export const exportarVentasExcel = async (req, res) => {
       ingresosAnterior > 0
         ? ((totalIngresos - ingresosAnterior) / ingresosAnterior) * 100
         : 0;
+
+    const proyeccion =
+      (totalVentas + ventasAnterior) / 2;
 
     /* =========================
        DASHBOARD
@@ -1371,10 +1371,7 @@ export const exportarVentasExcel = async (req, res) => {
     const mejorHora =
       Object.entries(porHora || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
 
-    const proyeccionVentas =
-      (totalVentas + ventasAnterior) / 2; // promedio móvil simple
-
-    dashboard.addRow(["📊 DASHBOARD BI COMPLETO"]);
+    dashboard.addRow(["📊 DASHBOARD BI"]);
     dashboard.addRow([]);
 
     dashboard.addRow(["Ventas", totalVentas]);
@@ -1396,11 +1393,11 @@ export const exportarVentasExcel = async (req, res) => {
 
     dashboard.addRow([]);
 
-    dashboard.addRow(["🔮 Proyección próximo mes", proyeccionVentas]);
+    dashboard.addRow(["🔮 Proyección ventas", proyeccion]);
 
     dashboard.getCell("A1").font = { size: 18, bold: true };
     dashboard.getColumn(1).width = 30;
-    dashboard.getColumn(2).width = 20;
+    dashboard.getColumn(2).width = 25;
 
     /* =========================
        VENTAS DETALLADAS
@@ -1419,9 +1416,9 @@ export const exportarVentasExcel = async (req, res) => {
       { header: "ID", key: "id", width: 25 }
     ];
 
-    ventas.forEach((v) => {
+    ventas.forEach(v => {
       ventasSheet.addRow({
-        producto: v.producto || v.nombre || "-",
+        producto: v.producto || "-",
         vendedor: v.vendedor || "-",
         medioPago: v.medioPago || "-",
         monto: v.monto || 0,
@@ -1445,7 +1442,7 @@ export const exportarVentasExcel = async (req, res) => {
       { header: "Total", key: "total", width: 20 }
     ];
 
-    ingresos.forEach((i) => {
+    ingresos.forEach(i => {
       ingresosSheet.addRow({
         fecha: i.fecha || "-",
         total: i.total || 0
@@ -1455,61 +1452,88 @@ export const exportarVentasExcel = async (req, res) => {
     ingresosSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       TOP PRODUCTOS
+       PRODUCTOS
     ========================= */
 
-    const productosSheet = workbook.addWorksheet("Top Productos BI");
+    const productosSheet = workbook.addWorksheet("Top Productos");
 
     productosSheet.columns = [
       { header: "Producto", key: "nombre", width: 40 },
       { header: "Cantidad", key: "cantidad", width: 15 },
       { header: "Total", key: "total", width: 20 },
-      { header: "%", key: "porcentaje", width: 15 }
+      { header: "% impacto", key: "porcentaje", width: 20 }
     ];
 
-    const totalProductos = Object.values(productos || {}).reduce(
-      (acc, p) => acc + (p.total || 0),
-      0
-    );
+    const totalProductos = Object.values(productos || {})
+      .reduce((acc, p) => acc + (p.total || 0), 0);
 
     Object.entries(productos || {})
       .map(([nombre, data]) => ({
         nombre,
-        cantidad: data.cantidad,
-        total: data.total,
+        cantidad: data.cantidad || 0,
+        total: data.total || 0,
         porcentaje:
           totalProductos > 0
-            ? ((data.total / totalProductos) * 100).toFixed(2)
-            : 0
+            ? ((data.total / totalProductos) * 100).toFixed(2) + "%"
+            : "0%"
       }))
       .sort((a, b) => b.total - a.total)
-      .forEach((p) => productosSheet.addRow(p));
+      .forEach(p => productosSheet.addRow(p));
 
     productosSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       COMPARATIVA + DATA PARA GRÁFICOS
+       PRODUCTIVIDAD VENDEDORES
     ========================= */
 
-    const chartSheet = workbook.addWorksheet("Evolución BI");
+    const vendedorSheet = workbook.addWorksheet("Productividad");
 
-    chartSheet.columns = [
-      { header: "Periodo", key: "periodo", width: 20 },
-      { header: "Ventas", key: "ventas", width: 20 },
-      { header: "Ingresos", key: "ingresos", width: 20 }
+    vendedorSheet.columns = [
+      { header: "Vendedor", key: "vendedor", width: 25 },
+      { header: "Ventas", key: "ventas", width: 15 },
+      { header: "Horas", key: "horas", width: 15 },
+      { header: "$/Hora", key: "porHora", width: 15 },
+      { header: "Comisión", key: "comision", width: 15 },
+      { header: "Neto", key: "neto", width: 15 }
     ];
 
-    chartSheet.addRows([
-      { periodo: "Anterior", ventas: ventasAnterior, ingresos: ingresosAnterior },
-      { periodo: "Actual", ventas: totalVentas, ingresos: totalIngresos },
-      {
-        periodo: "Proyección",
-        ventas: proyeccionVentas,
-        ingresos: (totalIngresos + ingresosAnterior) / 2
-      }
-    ]);
+    const map = {};
 
-    chartSheet.getRow(1).font = { bold: true };
+    ventas.forEach(v => {
+      const vendedor = v.vendedor || "Sin vendedor";
+
+      if (!map[vendedor]) {
+        map[vendedor] = { total: 0, fechas: [] };
+      }
+
+      map[vendedor].total += v.monto || 0;
+      map[vendedor].fechas.push(new Date(v.fecha));
+    });
+
+    Object.entries(map).forEach(([vendedor, data]) => {
+      const total = data.total;
+
+      const fechas = data.fechas.sort((a, b) => a - b);
+
+      const horas =
+        fechas.length > 1
+          ? (fechas[fechas.length - 1] - fechas[0]) / (1000 * 60 * 60)
+          : 1;
+
+      const comision = total * 0.02;
+      const neto = total - comision;
+
+      vendedorSheet.addRow({
+        vendedor,
+        ventas: total,
+        horas: horas.toFixed(2),
+        porHora: (total / horas).toFixed(2),
+        comision,
+        neto
+      });
+    });
+
+    vendedorSheet.getRow(1).font = { bold: true };
 
     /* =========================
        FLUJO DE CAJA
@@ -1523,11 +1547,11 @@ export const exportarVentasExcel = async (req, res) => {
       { header: "Fecha", key: "fecha", width: 20 }
     ];
 
-    ventas.forEach((v) => {
+    ventas.forEach(v => {
       cashflow.addRow({ tipo: "VENTA", monto: v.monto, fecha: v.fecha });
     });
 
-    ingresos.forEach((i) => {
+    ingresos.forEach(i => {
       cashflow.addRow({ tipo: "INGRESO", monto: i.total, fecha: i.fecha });
     });
 
@@ -1546,7 +1570,7 @@ export const exportarVentasExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=BI_dashboard_pro.xlsx"
+      "attachment; filename=BI_PRO_dashboard.xlsx"
     );
 
     return res.end(buffer);
@@ -1554,7 +1578,7 @@ export const exportarVentasExcel = async (req, res) => {
     console.error("❌ Error BI Excel:", error);
 
     return res.status(500).json({
-      error: "Error generando BI Excel",
+      error: "Error generando Excel BI",
       message: error.message
     });
   }
