@@ -311,7 +311,8 @@ export const createOrder = async (req, res) => {
       cuotas = 1,
       vendedor,
       total,
-      sessionId
+      sessionId,
+      descuentoPorcentaje = 0
     } = req.body;
 
     console.log("VENTA:", req.body);
@@ -356,6 +357,14 @@ export const createOrder = async (req, res) => {
             String(p.productId)
           );
 
+        if (!db) {
+
+          throw new Error(
+            `Producto no encontrado: ${p.productId}`
+          );
+
+        }
+
         const price = Number(
           p.precio ??
           db?.pricing?.sale ??
@@ -397,6 +406,20 @@ export const createOrder = async (req, res) => {
       );
 
     /* =========================
+       DESCUENTO
+    ========================= */
+    const porcentajeDescuento =
+      Number(descuentoPorcentaje) || 0;
+
+    const subtotal =
+      itemsTotal -
+      (
+        itemsTotal *
+        porcentajeDescuento /
+        100
+      );
+
+    /* =========================
        RECARGO TARJETA CRÉDITO
     ========================= */
     let porcentajeRecargo = 0;
@@ -421,11 +444,9 @@ export const createOrder = async (req, res) => {
        TOTAL FINAL
     ========================= */
     const totalFinal =
-
-      itemsTotal +
-
+      subtotal +
       (
-        itemsTotal *
+        subtotal *
         porcentajeRecargo /
         100
       );
@@ -438,9 +459,18 @@ export const createOrder = async (req, res) => {
       Math.round(total)
     ) {
 
-      throw new Error(
-        "Total inconsistente"
-      );
+      return res.status(400).json({
+
+        message:
+          "Total inconsistente",
+
+        backendTotal:
+          totalFinal,
+
+        frontendTotal:
+          total
+
+      });
 
     }
 
@@ -468,30 +498,42 @@ export const createOrder = async (req, res) => {
 
         items: itemsTotal,
 
-        grand: totalFinal
+        discountPercentage:
+          porcentajeDescuento,
+
+        subtotal,
+
+        grand:
+          totalFinal
 
       },
 
       payment: {
 
-        method: metodoPago,
+        method:
+          metodoPago,
 
         installments:
           Number(cuotas),
 
-        status: "approved",
+        status:
+          "approved",
 
-        amount: totalFinal,
+        amount:
+          totalFinal,
 
-        paidAt: now
+        paidAt:
+          now
 
       },
 
-      createdBy: vendedor,
+      createdBy:
+        vendedor,
 
       sessionId,
 
-      createdAt: now
+      createdAt:
+        now
 
     });
 
@@ -551,7 +593,7 @@ export const createOrder = async (req, res) => {
 
   } finally {
 
-    session.endSession();
+    await session.endSession();
 
   }
 
