@@ -1062,59 +1062,169 @@ export const obtenerVentasPorMes = async (req, res) => {
   try {
     let { mes, anio } = req.query;
 
+    // 🔴 Validación
     if (!mes || !anio) {
-      return res.status(400).json({ error: "Falta mes o año" });
+      return res.status(400).json({
+        error: "Falta mes o año"
+      });
     }
 
-    mes = parseInt(mes); // 1-12
-    anio = parseInt(anio);
+    mes = Number(mes);
+    anio = Number(anio);
 
-    const inicio = dayjs(`${anio}-${mes}-01`).startOf("month").toDate();
-    const fin = dayjs(`${anio}-${mes}-01`).endOf("month").toDate();
+    if (Number.isNaN(mes) || Number.isNaN(anio)) {
+      return res.status(400).json({
+        error: "Mes y año deben ser numéricos"
+      });
+    }
 
-    // 🟢 VENTAS
+    // 🟡 Rango de fechas del mes
+    const inicio = dayjs(new Date(anio, mes - 1, 1))
+      .startOf("month")
+      .toDate();
+
+    const fin = dayjs(new Date(anio, mes - 1, 1))
+      .endOf("month")
+      .toDate();
+
+    /* =========================
+       VENTAS
+    ========================= */
+
     const orders = await Order.find({
       "payment.status": "approved",
       createdAt: { $gte: inicio, $lte: fin }
-    }).lean();
+    })
+      .lean()
+      .select("items totals payment createdAt createdBy");
 
-    const data = procesarVentas(orders, true);
+    /* =========================
+       INGRESOS
+    ========================= */
 
-    // 🟣 INGRESOS
     const ingresosDB = await Ingreso.find({
       createdAt: { $gte: inicio, $lte: fin }
-    }).lean();
+    })
+      .lean()
+      .select("total createdAt");
 
-    let totalIngresos = 0;
+    /* =========================
+       ESTADÍSTICAS
+    ========================= */
 
-    ingresosDB.forEach(i => {
-      totalIngresos += i.total || 0;
+    const ventas = [];
+    const productos = {};
+    const porDia = {};
+    const porMedioPago = {};
+    const porVendedor = {};
+
+    let totalVentas = 0;
+
+    /* =========================
+       PROCESAR VENTAS
+    ========================= */
+
+    orders.forEach((o) => {
+      const fecha = dayjs(o.createdAt);
+      const dia = fecha.format("YYYY-MM-DD");
+
+      const vendedor = o?.createdBy || "No especificado";
+      const medioPago = o?.payment?.method || "No especificado";
+
+      const montoVenta = Number(o?.totals?.grand || 0);
+      const descuento = Number(o?.totals?.discountPercentage || 0);
+
+      /* =========================
+         PRODUCTOS EN UNA SOLA VENTA
+      ========================= */
+
+      const nombresProductos = o.items
+        ?.map((item) => {
+          const qty = Number(item.qty || 1);
+          return qty > 1 ? `${item.title} x${qty}` : item.title;
+        })
+        .join(" + ");
+
+      ventas.push({
+        id: String(o._id),
+        producto: nombresProductos,
+        monto: montoVenta,
+        descuento,
+        vendedor,
+        medioPago,
+        fecha: fecha.format("YYYY-MM-DD"),
+        hora: fecha.format("HH:mm")
+      });
+
+      /* =========================
+         RESÚMENES GENERALES
+      ========================= */
+
+      totalVentas += montoVenta;
+
+      porDia[dia] = (porDia[dia] || 0) + montoVenta;
+      porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + montoVenta;
+      porVendedor[vendedor] = (porVendedor[vendedor] || 0) + montoVenta;
+
+      /* =========================
+         PRODUCTOS (AGREGADO GLOBAL)
+      ========================= */
+
+      o.items?.forEach((item) => {
+        const nombre = item.title || "Producto";
+        const cantidad = Number(item.qty || 1);
+        const subtotal = Number(item.subtotal || 0);
+
+        if (!productos[nombre]) {
+          productos[nombre] = {
+            cantidad: 0,
+            total: 0
+          };
+        }
+
+        productos[nombre].cantidad += cantidad;
+        productos[nombre].total += subtotal;
+      });
     });
 
-    // 🟣 FORMATEO OPCIONAL
-    const ingresos = ingresosDB.map(i => ({
+    /* =========================
+       INGRESOS
+    ========================= */
+
+    const totalIngresos = ingresosDB.reduce(
+      (acc, i) => acc + (i.total || 0),
+      0
+    );
+
+    const ingresos = ingresosDB.map((i) => ({
       fecha: dayjs(i.createdAt).format("YYYY-MM-DD"),
-      total: i.total
+      total: i.total || 0
     }));
 
-    // 💥 AGREGAMOS AL RESPONSE
-    res.json({
-      ...data,
+    /* =========================
+       RESPUESTA FINAL
+    ========================= */
 
-      ingresos, // 👈 listado
+    return res.json({
+      ventas,
+      productos,
+      ingresos,
 
       resumen: {
-        ...data.resumen,
+        totalVentas,
         ingresos: totalIngresos,
-        balance: (data.resumen?.total || 0) - totalIngresos
-      }
+        balance: totalVentas - totalIngresos,
+        cantidadVentas: orders.length
+      },
 
+      porDia,
+      porMedioPago,
+      porVendedor
     });
-
   } catch (error) {
     console.error("❌ Error ventas por mes:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Error al obtener ventas por mes",
       message: error.message
     });
