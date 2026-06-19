@@ -946,69 +946,303 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 };
 
 // Obtener ventas por mes
-export const obtenerVentasPorMes = async (req, res) => {
+export const obtenerVentasCierreCaja = async (req, res) => {
   try {
-    let { mes, anio } = req.query;
 
-    if (!mes || !anio) {
-      return res.status(400).json({ error: "Falta mes o año" });
+    const { fecha } = req.query;
+
+    if (!fecha) {
+
+      return res.status(400).json({
+        error: "Falta fecha",
+      });
+
     }
 
-    mes = parseInt(mes); // 1-12
-    anio = parseInt(anio);
+    const inicio = dayjs
+      .tz(fecha, TZ)
+      .startOf("day")
+      .toDate();
 
-    const inicio = dayjs(`${anio}-${mes}-01`).startOf("month").toDate();
-    const fin = dayjs(`${anio}-${mes}-01`).endOf("month").toDate();
+    const fin = dayjs
+      .tz(fecha, TZ)
+      .endOf("day")
+      .toDate();
 
-    // 🟢 VENTAS
+    /* =========================
+       VENTAS
+    ========================= */
+
     const orders = await Order.find({
+
       "payment.status": "approved",
-      createdAt: { $gte: inicio, $lte: fin }
+
+      createdAt: {
+        $gte: inicio,
+        $lte: fin,
+      },
+
     }).lean();
 
-    const data = procesarVentas(orders, true);
+    /* =========================
+       INGRESOS
+    ========================= */
 
-    // 🟣 INGRESOS
     const ingresosDB = await Ingreso.find({
-      createdAt: { $gte: inicio, $lte: fin }
+
+      createdAt: {
+        $gte: inicio,
+        $lte: fin,
+      },
+
     }).lean();
 
-    let totalIngresos = 0;
+    const ventas = [];
 
-    ingresosDB.forEach(i => {
-      totalIngresos += i.total || 0;
+    const porVendedor = {};
+
+    const porMedioPago = {};
+
+    const porHora = {};
+
+    const productos = {};
+
+    let total = 0;
+
+    /* =========================
+       PROCESAR VENTAS
+    ========================= */
+
+    orders.forEach((o) => {
+
+      const vendedor =
+        o?.createdBy || "No especificado";
+
+      const medioPago =
+        o?.payment?.method ||
+        "No especificado";
+
+      const fechaPago =
+        o?.createdAt;
+
+      const hora =
+        dayjs(fechaPago)
+          .tz(TZ)
+          .format("HH");
+
+      /* =========================
+         TOTAL REAL DE LA VENTA
+      ========================= */
+
+      const montoVenta =
+        Number(
+          o?.totals?.grand || 0
+        );
+
+      /* =========================
+         PRODUCTOS DE LA VENTA
+      ========================= */
+
+      const nombresProductos =
+        o.items
+          ?.map(item => {
+
+            const cantidad =
+              Number(
+                item.qty || 1
+              );
+
+            return cantidad > 1
+              ? `${item.title} x${cantidad}`
+              : item.title;
+
+          })
+          .join(" + ");
+
+      /* =========================
+         TABLA DE VENTAS
+      ========================= */
+
+      ventas.push({
+
+        id: String(o._id),
+
+        producto:
+          nombresProductos,
+
+        vendedor,
+
+        medioPago,
+
+        monto:
+          montoVenta,
+
+        descuento:
+          Number(
+            o?.totals?.discountPercentage || 0
+          ),
+
+        fecha:
+          dayjs(fechaPago)
+            .tz(TZ)
+            .format("YYYY-MM-DD"),
+
+        hora:
+          dayjs(fechaPago)
+            .tz(TZ)
+            .format("HH:mm"),
+
+      });
+
+      /* =========================
+         RESUMENES
+      ========================= */
+
+      total += montoVenta;
+
+      porVendedor[vendedor] =
+        (porVendedor[vendedor] || 0) +
+        montoVenta;
+
+      porMedioPago[medioPago] =
+        (porMedioPago[medioPago] || 0) +
+        montoVenta;
+
+      porHora[hora] =
+        (porHora[hora] || 0) +
+        montoVenta;
+
+      /* =========================
+         ESTADISTICAS PRODUCTOS
+      ========================= */
+
+      o.items?.forEach(item => {
+
+        const nombre =
+          item.title || "Producto";
+
+        const cantidad =
+          Number(
+            item.qty || 1
+          );
+
+        const subtotal =
+          Number(
+            item.subtotal || 0
+          );
+
+        if (!productos[nombre]) {
+
+          productos[nombre] = {
+
+            cantidad: 0,
+
+            total: 0,
+
+          };
+
+        }
+
+        productos[nombre].cantidad +=
+          cantidad;
+
+        productos[nombre].total +=
+          subtotal;
+
+      });
+
     });
 
-    // 🟣 FORMATEO OPCIONAL
-    const ingresos = ingresosDB.map(i => ({
-      fecha: dayjs(i.createdAt).format("YYYY-MM-DD"),
-      total: i.total
-    }));
+    /* =========================
+       PRODUCTOS INGRESADOS
+    ========================= */
 
-    // 💥 AGREGAMOS AL RESPONSE
+    const productosIngresados = [];
+
+    for (const ingreso of ingresosDB) {
+
+      for (const item of ingreso.items) {
+
+        const productoDB =
+          await Product.findById(
+            item.productId
+          ).lean();
+
+        productosIngresados.push({
+
+          nombre:
+            productoDB?.title ||
+            "Producto",
+
+          cantidad:
+            item.quantity,
+
+          fecha:
+            dayjs(
+              ingreso.createdAt
+            )
+              .tz(TZ)
+              .format(
+                "YYYY-MM-DD HH:mm"
+              ),
+
+        });
+
+      }
+
+    }
+
+    /* =========================
+       RESPUESTA
+    ========================= */
+
     res.json({
-      ...data,
 
-      ingresos, // 👈 listado
+      ventas,
+
+      productos,
+
+      productosIngresados,
 
       resumen: {
-        ...data.resumen,
-        ingresos: totalIngresos,
-        balance: (data.resumen?.total || 0) - totalIngresos
-      }
+
+        total,
+
+        comisiones:
+          total * 0.02,
+
+        cantidadVentas:
+          orders.length,
+
+      },
+
+      porVendedor,
+
+      porMedioPago,
+
+      porHora,
 
     });
 
   } catch (error) {
-    console.error("❌ Error ventas por mes:", error);
+
+    console.error(
+      "❌ Error cierre caja:",
+      error
+    );
 
     res.status(500).json({
-      error: "Error al obtener ventas por mes",
-      message: error.message
+
+      error:
+        "Error al obtener cierre",
+
+      message:
+        error.message,
+
     });
+
   }
 };
-
 // Función de procesamiento de ventas
 function procesarVentas(orders, incluirPorDia = false) {
 
