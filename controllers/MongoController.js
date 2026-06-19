@@ -311,7 +311,8 @@ export const createOrder = async (req, res) => {
       cuotas = 1,
       vendedor,
       total,
-      sessionId
+      sessionId,
+      descuentoPorcentaje = 0
     } = req.body;
 
     console.log("VENTA:", req.body);
@@ -319,6 +320,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        VALIDAR PRODUCTOS
     ========================= */
+
     if (!productos?.length) {
 
       return res.status(400).json({
@@ -330,6 +332,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        OBTENER PRODUCTOS DB
     ========================= */
+
     const ids = productos.map(
       p => p.productId
     );
@@ -348,6 +351,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        NORMALIZAR ITEMS
     ========================= */
+
     const normItems =
       productos.map(p => {
 
@@ -355,6 +359,14 @@ export const createOrder = async (req, res) => {
           mapProd.get(
             String(p.productId)
           );
+
+        if (!db) {
+
+          throw new Error(
+            `Producto no encontrado: ${p.productId}`
+          );
+
+        }
 
         const price = Number(
           p.precio ??
@@ -390,6 +402,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        TOTAL PRODUCTOS
     ========================= */
+
     const itemsTotal =
       normItems.reduce(
         (a, b) => a + b.subtotal,
@@ -397,8 +410,21 @@ export const createOrder = async (req, res) => {
       );
 
     /* =========================
+       DESCUENTO
+    ========================= */
+
+    const subtotal =
+      itemsTotal -
+      (
+        itemsTotal *
+        Number(descuentoPorcentaje) /
+        100
+      );
+
+    /* =========================
        RECARGO TARJETA CRÉDITO
     ========================= */
+
     let porcentajeRecargo = 0;
 
     if (metodoPago === "Crédito") {
@@ -420,33 +446,59 @@ export const createOrder = async (req, res) => {
     /* =========================
        TOTAL FINAL
     ========================= */
+
     const totalFinal =
-
-      itemsTotal +
-
+      subtotal +
       (
-        itemsTotal *
+        subtotal *
         porcentajeRecargo /
         100
       );
 
+    console.log({
+
+      itemsTotal,
+
+      descuentoPorcentaje,
+
+      subtotal,
+
+      porcentajeRecargo,
+
+      totalFinal,
+
+      totalFrontend: total
+
+    });
+
     /* =========================
        VALIDAR TOTAL
     ========================= */
+
     if (
       Math.round(totalFinal) !==
       Math.round(total)
     ) {
 
-      throw new Error(
-        "Total inconsistente"
-      );
+      return res.status(400).json({
+
+        message:
+          "Total inconsistente",
+
+        backendTotal:
+          totalFinal,
+
+        frontendTotal:
+          total
+
+      });
 
     }
 
     /* =========================
        NÚMERO DE ORDEN
     ========================= */
+
     const orderNumber =
       await generateOrderNumber();
 
@@ -458,6 +510,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        CREAR ORDEN
     ========================= */
+
     const order = new Order({
 
       orderNumber,
@@ -466,38 +519,54 @@ export const createOrder = async (req, res) => {
 
       totals: {
 
-        items: itemsTotal,
+        items:
+          itemsTotal,
 
-        grand: totalFinal
+        discountPercentage:
+          Number(
+            descuentoPorcentaje
+          ),
+
+        subtotal,
+
+        grand:
+          totalFinal
 
       },
 
       payment: {
 
-        method: metodoPago,
+        method:
+          metodoPago,
 
         installments:
           Number(cuotas),
 
-        status: "approved",
+        status:
+          "approved",
 
-        amount: totalFinal,
+        amount:
+          totalFinal,
 
-        paidAt: now
+        paidAt:
+          now
 
       },
 
-      createdBy: vendedor,
+      createdBy:
+        vendedor,
 
       sessionId,
 
-      createdAt: now
+      createdAt:
+        now
 
     });
 
     /* =========================
        GUARDAR ORDEN
     ========================= */
+
     await order.save({
       session
     });
@@ -510,6 +579,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        DESCONTAR STOCK
     ========================= */
+
     await adjustStock(
       session,
       normItems,
@@ -519,6 +589,7 @@ export const createOrder = async (req, res) => {
     /* =========================
        COMMIT
     ========================= */
+
     await session.commitTransaction();
 
     return res.status(201).json({
@@ -551,7 +622,7 @@ export const createOrder = async (req, res) => {
 
   } finally {
 
-    session.endSession();
+    await session.endSession();
 
   }
 
