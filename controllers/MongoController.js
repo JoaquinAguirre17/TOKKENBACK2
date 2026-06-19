@@ -1062,7 +1062,7 @@ export const obtenerVentasPorMes = async (req, res) => {
   try {
     let { mes, anio } = req.query;
 
-    // 🔴 Validación
+    // 🔴 VALIDACIÓN
     if (!mes || !anio) {
       return res.status(400).json({
         error: "Falta mes o año"
@@ -1078,7 +1078,13 @@ export const obtenerVentasPorMes = async (req, res) => {
       });
     }
 
-    // 🟡 Rango de fechas del mes
+    if (mes < 1 || mes > 12) {
+      return res.status(400).json({
+        error: "Mes inválido (1-12)"
+      });
+    }
+
+    // 🟡 RANGO DE FECHAS
     const inicio = dayjs(new Date(anio, mes - 1, 1))
       .startOf("month")
       .toDate();
@@ -1109,14 +1115,15 @@ export const obtenerVentasPorMes = async (req, res) => {
       .select("total createdAt");
 
     /* =========================
-       ESTADÍSTICAS
+       INIT ESTADÍSTICAS
     ========================= */
 
     const ventas = [];
     const productos = {};
-    const porDia = {};
-    const porMedioPago = {};
     const porVendedor = {};
+    const porMedioPago = {};
+    const porHora = {};
+    const porDia = {};
 
     let totalVentas = 0;
 
@@ -1127,19 +1134,17 @@ export const obtenerVentasPorMes = async (req, res) => {
     orders.forEach((o) => {
       const fecha = dayjs(o.createdAt);
       const dia = fecha.format("YYYY-MM-DD");
+      const hora = fecha.format("HH");
 
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
 
-      const montoVenta = Number(o?.totals?.grand || 0);
+      const monto = Number(o?.totals?.grand || 0);
       const descuento = Number(o?.totals?.discountPercentage || 0);
 
-      /* =========================
-         PRODUCTOS EN UNA SOLA VENTA
-      ========================= */
-
-      const nombresProductos = o.items
-        ?.map((item) => {
+      // 🧾 PRODUCTOS EN UNA SOLA VENTA
+      const nombresProductos = (o.items || [])
+        .map((item) => {
           const qty = Number(item.qty || 1);
           return qty > 1 ? `${item.title} x${qty}` : item.title;
         })
@@ -1148,29 +1153,31 @@ export const obtenerVentasPorMes = async (req, res) => {
       ventas.push({
         id: String(o._id),
         producto: nombresProductos,
-        monto: montoVenta,
-        descuento,
         vendedor,
         medioPago,
+        monto,
+        descuento,
         fecha: fecha.format("YYYY-MM-DD"),
         hora: fecha.format("HH:mm")
       });
 
-      /* =========================
-         RESÚMENES GENERALES
-      ========================= */
+      // 📊 TOTALES GENERALES
+      totalVentas += monto;
 
-      totalVentas += montoVenta;
+      porVendedor[vendedor] =
+        (porVendedor[vendedor] || 0) + monto;
 
-      porDia[dia] = (porDia[dia] || 0) + montoVenta;
-      porMedioPago[medioPago] = (porMedioPago[medioPago] || 0) + montoVenta;
-      porVendedor[vendedor] = (porVendedor[vendedor] || 0) + montoVenta;
+      porMedioPago[medioPago] =
+        (porMedioPago[medioPago] || 0) + monto;
 
-      /* =========================
-         PRODUCTOS (AGREGADO GLOBAL)
-      ========================= */
+      porHora[hora] =
+        (porHora[hora] || 0) + monto;
 
-      o.items?.forEach((item) => {
+      porDia[dia] =
+        (porDia[dia] || 0) + monto;
+
+      // 📦 PRODUCTOS AGRUPADOS
+      (o.items || []).forEach((item) => {
         const nombre = item.title || "Producto";
         const cantidad = Number(item.qty || 1);
         const subtotal = Number(item.subtotal || 0);
@@ -1202,7 +1209,7 @@ export const obtenerVentasPorMes = async (req, res) => {
     }));
 
     /* =========================
-       RESPUESTA FINAL
+       RESPUESTA FINAL (SAFE CONTRACT)
     ========================= */
 
     return res.json({
@@ -1210,16 +1217,17 @@ export const obtenerVentasPorMes = async (req, res) => {
       productos,
       ingresos,
 
+      porVendedor,
+      porMedioPago,
+      porHora,
+      porDia,
+
       resumen: {
-        totalVentas,
+        total: totalVentas,
         ingresos: totalIngresos,
         balance: totalVentas - totalIngresos,
         cantidadVentas: orders.length
-      },
-
-      porDia,
-      porMedioPago,
-      porVendedor
+      }
     });
   } catch (error) {
     console.error("❌ Error ventas por mes:", error);
@@ -1230,7 +1238,6 @@ export const obtenerVentasPorMes = async (req, res) => {
     });
   }
 };
-
 // Función de procesamiento de ventas
 function procesarVentas(orders, incluirPorDia = false) {
 
