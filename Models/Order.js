@@ -28,31 +28,48 @@ const orderSchema = new mongoose.Schema({
 
   totals: {
 
-    items: Number,
+    items: {
+      type: Number,
+      default: 0
+    },
 
-    grand: Number,
+    discountPercentage: {
+      type: Number,
+      default: 0
+    },
+
+    subtotal: {
+      type: Number,
+      default: 0
+    },
+
+    grand: {
+      type: Number,
+      default: 0
+    },
 
     currency: {
       type: String,
       default: "ARS"
     }
 
+
   },
 
   payment: {
 
-  method: String,
+    method: String,
 
-  installments: {
-    type: Number,
-    default: 1
+    installments: {
+      type: Number,
+      default: 1
+    },
+
+    status: String,
+
+    amount: Number
+
   },
-
-  status: String,
-
-  amount: Number
-
-},
 
   createdBy: String,
 
