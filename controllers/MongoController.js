@@ -1308,222 +1308,230 @@ function procesarVentas(orders, incluirPorDia = false) {
 
 }
 export const exportarVentasExcel = async (req, res) => {
-
   try {
+    const body = req.body || {};
 
-    const {
-      ventas = [],
-      resumen = {},
-      porVendedor = {},
-      porMedioPago = {},
-      porHora = {},
-      productos = {},
-      ingresos = []
-    } = req.body;
+    const ventas = body.ventas || [];
+    const resumen = body.resumen || {};
+    const porVendedor = body.porVendedor || {};
+    const porMedioPago = body.porMedioPago || {};
+    const porHora = body.porHora || {};
+    const productos = body.productos || {};
+    const ingresos = body.ingresos || [];
+
+    const ventasAnterior = body.ventasAnterior || 0;
+    const ingresosAnterior = body.ingresosAnterior || 0;
+
     const workbook = new ExcelJS.Workbook();
-
-    workbook.creator = "Sistema POS";
+    workbook.creator = "BI POS System";
     workbook.created = new Date();
 
-    const totalIngresos = ingresos.reduce((acc, i) => acc + (i.total || 0), 0);
-    const balance = (resumen.total || 0) - totalIngresos;
-
     /* =========================
-       HOJA 1 - CIERRE DE CAJA
+       MÉTRICAS BASE
     ========================= */
 
-    const cierre = workbook.addWorksheet("Cierre de caja");
+    const totalVentas = resumen.total || 0;
+    const totalIngresos = ingresos.reduce(
+      (acc, i) => acc + (i.total || 0),
+      0
+    );
 
-    cierre.mergeCells("A1:D1");
+    const balance = totalVentas - totalIngresos;
+    const cantidadVentas = resumen.cantidadVentas || 0;
 
-    const titulo = cierre.getCell("A1");
-
-    titulo.value = "CIERRE DE CAJA";
-
-    titulo.font = { size: 18, bold: true };
-
-    titulo.alignment = { horizontal: "center" };
-
-    cierre.addRow([]);
-
-    cierre.addRow(["Total ventas", resumen.total]);
-    cierre.addRow(["Total ingresos", totalIngresos]); // 🟣 NUEVO
-    cierre.addRow(["Balance", balance]); // 🟣 NUEVO
-    cierre.addRow(["Comisiones", resumen.comisiones]);
-    cierre.addRow(["Cantidad ventas", resumen.cantidadVentas]);
-
-    cierre.getColumn(1).width = 25;
-    cierre.getColumn(2).width = 20;
+    const ticketPromedio =
+      cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
 
     /* =========================
-       HOJA 2 - VENTAS
+       CRECIMIENTO
+    ========================= */
+
+    const crecimientoVentas =
+      ventasAnterior > 0
+        ? ((totalVentas - ventasAnterior) / ventasAnterior) * 100
+        : 0;
+
+    const crecimientoIngresos =
+      ingresosAnterior > 0
+        ? ((totalIngresos - ingresosAnterior) / ingresosAnterior) * 100
+        : 0;
+
+    /* =========================
+       DASHBOARD
+    ========================= */
+
+    const dashboard = workbook.addWorksheet("Dashboard BI");
+
+    const mejorVendedor =
+      Object.entries(porVendedor || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+
+    const mejorProducto =
+      Object.entries(productos || {}).sort((a, b) => b[1].total - a[1].total)[0]?.[0] || "-";
+
+    const mejorHora =
+      Object.entries(porHora || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+
+    const proyeccionVentas =
+      (totalVentas + ventasAnterior) / 2; // promedio móvil simple
+
+    dashboard.addRow(["📊 DASHBOARD BI COMPLETO"]);
+    dashboard.addRow([]);
+
+    dashboard.addRow(["Ventas", totalVentas]);
+    dashboard.addRow(["Ingresos", totalIngresos]);
+    dashboard.addRow(["Balance", balance]);
+    dashboard.addRow(["Cantidad ventas", cantidadVentas]);
+    dashboard.addRow(["Ticket promedio", ticketPromedio]);
+
+    dashboard.addRow([]);
+
+    dashboard.addRow(["📈 Crecimiento ventas %", `${crecimientoVentas.toFixed(2)}%`]);
+    dashboard.addRow(["📈 Crecimiento ingresos %", `${crecimientoIngresos.toFixed(2)}%`]);
+
+    dashboard.addRow([]);
+
+    dashboard.addRow(["🏆 Mejor vendedor", mejorVendedor]);
+    dashboard.addRow(["🍔 Mejor producto", mejorProducto]);
+    dashboard.addRow(["⏰ Hora pico", mejorHora]);
+
+    dashboard.addRow([]);
+
+    dashboard.addRow(["🔮 Proyección próximo mes", proyeccionVentas]);
+
+    dashboard.getCell("A1").font = { size: 18, bold: true };
+    dashboard.getColumn(1).width = 30;
+    dashboard.getColumn(2).width = 20;
+
+    /* =========================
+       VENTAS DETALLADAS
     ========================= */
 
     const ventasSheet = workbook.addWorksheet("Ventas");
 
     ventasSheet.columns = [
-
-      { header: "Orden", key: "nombre", width: 15 },
+      { header: "Producto", key: "producto", width: 35 },
       { header: "Vendedor", key: "vendedor", width: 20 },
       { header: "Medio Pago", key: "medioPago", width: 20 },
       { header: "Monto", key: "monto", width: 15 },
-      { header: "Comisión", key: "comision", width: 15 },
+      { header: "Descuento %", key: "descuento", width: 15 },
       { header: "Fecha", key: "fecha", width: 15 },
       { header: "Hora", key: "hora", width: 10 },
-
+      { header: "ID", key: "id", width: 25 }
     ];
 
-    ventas.forEach(v => ventasSheet.addRow(v));
+    ventas.forEach((v) => {
+      ventasSheet.addRow({
+        producto: v.producto || v.nombre || "-",
+        vendedor: v.vendedor || "-",
+        medioPago: v.medioPago || "-",
+        monto: v.monto || 0,
+        descuento: v.descuento || 0,
+        fecha: v.fecha || "-",
+        hora: v.hora || "-",
+        id: v.id || "-"
+      });
+    });
 
     ventasSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 3 - INGRESOS 🟣
+       INGRESOS
     ========================= */
 
     const ingresosSheet = workbook.addWorksheet("Ingresos");
 
     ingresosSheet.columns = [
       { header: "Fecha", key: "fecha", width: 15 },
-      { header: "Descripción", key: "descripcion", width: 30 },
-      { header: "Total", key: "total", width: 20 },
+      { header: "Total", key: "total", width: 20 }
     ];
 
-    ingresos.forEach(i => {
+    ingresos.forEach((i) => {
       ingresosSheet.addRow({
-        fecha: i.fecha,
-        descripcion: i.descripcion || "-",
-        total: i.total
+        fecha: i.fecha || "-",
+        total: i.total || 0
       });
     });
 
     ingresosSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 4 - RANKING VENDEDORES
+       TOP PRODUCTOS
     ========================= */
 
-    const vendedoresSheet = workbook.addWorksheet("Ranking vendedores");
-
-    vendedoresSheet.columns = [
-
-      { header: "Vendedor", key: "vendedor", width: 20 },
-      { header: "Total vendido", key: "total", width: 20 },
-      { header: "Comisión 2%", key: "comision", width: 20 },
-
-    ];
-
-    const rankingVendedores = Object.entries(porVendedor)
-      .map(([vendedor, total]) => ({
-        vendedor,
-        total,
-        comision: total * 0.02
-      }))
-      .sort((a, b) => b.total - a.total);
-
-    rankingVendedores.forEach(v =>
-      vendedoresSheet.addRow(v)
-    );
-
-    vendedoresSheet.getRow(1).font = { bold: true };
-
-    /* =========================
-       HOJA 5 - MEDIOS DE PAGO
-    ========================= */
-
-    const pagoSheet = workbook.addWorksheet("Medios de pago");
-
-    pagoSheet.columns = [
-
-      { header: "Medio", key: "medio", width: 20 },
-      { header: "Total", key: "total", width: 20 },
-
-    ];
-
-    Object.entries(porMedioPago).forEach(([medio, total]) => {
-
-      pagoSheet.addRow({
-        medio,
-        total
-      });
-
-    });
-
-    pagoSheet.getRow(1).font = { bold: true };
-
-    /* =========================
-       HOJA 6 - VENTAS POR HORA
-    ========================= */
-
-    const horaSheet = workbook.addWorksheet("Ventas por hora");
-
-    horaSheet.columns = [
-
-      { header: "Hora", key: "hora", width: 15 },
-      { header: "Total vendido", key: "total", width: 20 },
-
-    ];
-
-    Object.entries(porHora).forEach(([hora, total]) => {
-
-      horaSheet.addRow({
-        hora,
-        total
-      });
-
-    });
-
-    horaSheet.getRow(1).font = { bold: true };
-
-    /* =========================
-       HOJA 7 - PRODUCTOS
-    ========================= */
-
-    const productosSheet = workbook.addWorksheet("Productos vendidos");
+    const productosSheet = workbook.addWorksheet("Top Productos BI");
 
     productosSheet.columns = [
-
       { header: "Producto", key: "nombre", width: 40 },
       { header: "Cantidad", key: "cantidad", width: 15 },
-      { header: "Total vendido", key: "total", width: 20 },
-
+      { header: "Total", key: "total", width: 20 },
+      { header: "%", key: "porcentaje", width: 15 }
     ];
 
-    Object.entries(productos).forEach(([nombre, data]) => {
+    const totalProductos = Object.values(productos || {}).reduce(
+      (acc, p) => acc + (p.total || 0),
+      0
+    );
 
-      productosSheet.addRow({
+    Object.entries(productos || {})
+      .map(([nombre, data]) => ({
         nombre,
         cantidad: data.cantidad,
-        total: data.total
-      });
-
-    });
+        total: data.total,
+        porcentaje:
+          totalProductos > 0
+            ? ((data.total / totalProductos) * 100).toFixed(2)
+            : 0
+      }))
+      .sort((a, b) => b.total - a.total)
+      .forEach((p) => productosSheet.addRow(p));
 
     productosSheet.getRow(1).font = { bold: true };
 
     /* =========================
-       HOJA 8 - RANKING PRODUCTOS
+       COMPARATIVA + DATA PARA GRÁFICOS
     ========================= */
 
-    const rankingSheet = workbook.addWorksheet("Ranking productos");
+    const chartSheet = workbook.addWorksheet("Evolución BI");
 
-    rankingSheet.columns = [
-
-      { header: "Producto", key: "nombre", width: 40 },
-      { header: "Cantidad vendida", key: "cantidad", width: 20 },
-
+    chartSheet.columns = [
+      { header: "Periodo", key: "periodo", width: 20 },
+      { header: "Ventas", key: "ventas", width: 20 },
+      { header: "Ingresos", key: "ingresos", width: 20 }
     ];
 
-    const ranking = Object.entries(productos)
-      .map(([nombre, data]) => ({
-        nombre,
-        cantidad: data.cantidad
-      }))
-      .sort((a, b) => b.cantidad - a.cantidad);
+    chartSheet.addRows([
+      { periodo: "Anterior", ventas: ventasAnterior, ingresos: ingresosAnterior },
+      { periodo: "Actual", ventas: totalVentas, ingresos: totalIngresos },
+      {
+        periodo: "Proyección",
+        ventas: proyeccionVentas,
+        ingresos: (totalIngresos + ingresosAnterior) / 2
+      }
+    ]);
 
-    ranking.forEach(p => rankingSheet.addRow(p));
+    chartSheet.getRow(1).font = { bold: true };
 
-    rankingSheet.getRow(1).font = { bold: true };
+    /* =========================
+       FLUJO DE CAJA
+    ========================= */
+
+    const cashflow = workbook.addWorksheet("Flujo de caja");
+
+    cashflow.columns = [
+      { header: "Tipo", key: "tipo", width: 15 },
+      { header: "Monto", key: "monto", width: 15 },
+      { header: "Fecha", key: "fecha", width: 20 }
+    ];
+
+    ventas.forEach((v) => {
+      cashflow.addRow({ tipo: "VENTA", monto: v.monto, fecha: v.fecha });
+    });
+
+    ingresos.forEach((i) => {
+      cashflow.addRow({ tipo: "INGRESO", monto: i.total, fecha: i.fecha });
+    });
+
+    cashflow.getRow(1).font = { bold: true };
 
     /* =========================
        DESCARGA
@@ -1538,21 +1546,18 @@ export const exportarVentasExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=reporte_cierre_caja.xlsx"
+      "attachment; filename=BI_dashboard_pro.xlsx"
     );
 
     return res.end(buffer);
-
   } catch (error) {
+    console.error("❌ Error BI Excel:", error);
 
-    console.error("❌ Error exportando Excel:", error);
-
-    res.status(500).json({
-      error: "Error exportando Excel"
+    return res.status(500).json({
+      error: "Error generando BI Excel",
+      message: error.message
     });
-
   }
-
 };
 
 export const getOrderById = async (req, res) => {
