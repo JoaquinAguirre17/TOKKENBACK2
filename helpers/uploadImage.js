@@ -1,30 +1,49 @@
-const stream = cloudinary.uploader.upload_stream(
-  {
-    folder: "products",
+import cloudinary from "../config/cloudinary.js";
+import streamifier from "streamifier";
 
-    // 1. remover fondo automáticamente
-    background_removal: "remove",
+export const uploadImage = (buffer) => {
+    return new Promise((resolve, reject) => {
 
-    // 2. optimización
-    quality: "auto",
-    fetch_format: "auto"
-  },
-  (error, result) => {
-    if (error) reject(error);
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "products",
 
-    // 3. generar URL con fondo blanco final
-    const finalUrl = cloudinary.url(result.public_id, {
-      transformation: [
-        {
-          background: "white",
-          crop: "pad"
-        }
-      ]
+                // 🔥 elimina fondo automáticamente
+                background_removal: "remove",
+
+                // ⚡ optimización automática
+                quality: "auto",
+                fetch_format: "auto"
+            },
+            (error, result) => {
+
+                if (error) return reject(error);
+
+                if (!result?.public_id) {
+                    return reject(new Error("Cloudinary no devolvió public_id"));
+                }
+
+                // 🎯 generar versión con fondo blanco
+                const finalUrl = cloudinary.url(result.public_id, {
+                    transformation: [
+                        {
+                            background: "white",
+                            crop: "pad"
+                        }
+                    ]
+                });
+
+                resolve({
+                    ...result,
+                    secure_url: finalUrl
+                });
+            }
+        );
+
+        // ⚠️ manejo de errores del stream
+        stream.on("error", reject);
+
+        // 📤 enviar buffer a Cloudinary
+        streamifier.createReadStream(buffer).pipe(stream);
     });
-
-    resolve({
-      ...result,
-      secure_url: finalUrl
-    });
-  }
-);
+};
