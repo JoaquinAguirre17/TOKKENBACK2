@@ -13,6 +13,7 @@ import Counter from "../Models/Counter.js";
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber } from "../Utils/orderNumber.js";
 import { generateSKU } from "../Utils/generateSKU.js";
+import { uploadImage } from "../helpers/uploadImage.js";
 import Ingreso from "../Models/Ingreso.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -253,9 +254,6 @@ export const searchProducts = async (req, res) => {
 export const createProduct = async (req, res) => {
   try {
 
-    console.log("BODY:", req.body);
-    console.log("FILES:", req.files);
-
     const body =
       req.body.product
         ? JSON.parse(req.body.product)
@@ -274,7 +272,32 @@ export const createProduct = async (req, res) => {
       );
     }
 
-    const created = await Product.create(body);
+    if (req.files?.length) {
+
+      const uploadedImages = [];
+
+      for (const file of req.files) {
+
+        const result = await uploadImage(
+          file.buffer
+        );
+
+        uploadedImages.push({
+          url: result.secure_url,
+          alt: body.title
+        });
+
+      }
+
+      body.images = [
+        ...(body.images || []),
+        ...uploadedImages
+      ];
+
+    }
+
+    const created =
+      await Product.create(body);
 
     res.status(201).json(created);
 
