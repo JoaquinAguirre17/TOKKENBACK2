@@ -53,7 +53,11 @@ router.get(
   exportarProductosExcel
 );
 router.get("/products/:id", getProductById);
-router.post("/products", createProduct);
+router.post(
+  "/products",
+  upload.array("images"),
+  createProduct
+);
 router.put("/products/:id", updateProduct);
 router.delete("/products/:id", deleteProduct);
 

@@ -252,15 +252,26 @@ export const searchProducts = async (req, res) => {
 
 export const createProduct = async (req, res) => {
   try {
-    const body = { ...req.body };
+
+    console.log("BODY:", req.body);
+    console.log("FILES:", req.files);
+
+    const body =
+      req.body.product
+        ? JSON.parse(req.body.product)
+        : { ...req.body };
 
     if (!body.title) {
-      return res.status(400).json({ error: "title es requerido" });
+      return res.status(400).json({
+        error: "title es requerido"
+      });
     }
 
-    // generar SKU automático si no viene
     if (!body.sku) {
-      body.sku = generateSKU(body.title, body.brand);
+      body.sku = generateSKU(
+        body.title,
+        body.brand
+      );
     }
 
     const created = await Product.create(body);
@@ -269,7 +280,10 @@ export const createProduct = async (req, res) => {
 
   } catch (e) {
 
-    console.error("ERROR CREANDO PRODUCTO:", e);
+    console.error(
+      "ERROR CREANDO PRODUCTO:",
+      e
+    );
 
     res.status(400).json({
       error: e.message
