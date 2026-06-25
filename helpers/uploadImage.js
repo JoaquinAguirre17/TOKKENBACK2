@@ -8,27 +8,27 @@ export const uploadImage = (buffer) => {
             {
                 folder: "products",
 
-                // 🔥 elimina fondo automáticamente
-                background_removal: "remove",
+                // ✅ background removal correcto
+                effect: "background_removal",
 
-                // ⚡ optimización automática
+                // optimización
                 quality: "auto",
                 fetch_format: "auto"
             },
             (error, result) => {
-
                 if (error) return reject(error);
 
                 if (!result?.public_id) {
-                    return reject(new Error("Cloudinary no devolvió public_id"));
+                    return reject(new Error("No public_id from Cloudinary"));
                 }
 
-                // 🎯 generar versión con fondo blanco
                 const finalUrl = cloudinary.url(result.public_id, {
                     transformation: [
                         {
                             background: "white",
-                            crop: "pad"
+                            crop: "pad",
+                            width: 1000,
+                            height: 1000
                         }
                     ]
                 });
