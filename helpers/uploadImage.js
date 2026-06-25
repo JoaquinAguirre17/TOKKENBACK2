@@ -1,27 +1,30 @@
-import cloudinary from "../config/cloudinary.js";
-import streamifier from "streamifier";
+const stream = cloudinary.uploader.upload_stream(
+  {
+    folder: "products",
 
-export const uploadImage = (buffer) => {
-  return new Promise((resolve, reject) => {
+    // 1. remover fondo automáticamente
+    background_removal: "remove",
 
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        folder: "products"
-      },
-      (error, result) => {
+    // 2. optimización
+    quality: "auto",
+    fetch_format: "auto"
+  },
+  (error, result) => {
+    if (error) reject(error);
 
-        if (error) {
-          reject(error);
-        } else {
-          resolve(result);
+    // 3. generar URL con fondo blanco final
+    const finalUrl = cloudinary.url(result.public_id, {
+      transformation: [
+        {
+          background: "white",
+          crop: "pad"
         }
+      ]
+    });
 
-      }
-    );
-
-    streamifier
-      .createReadStream(buffer)
-      .pipe(stream);
-
-  });
-};
+    resolve({
+      ...result,
+      secure_url: finalUrl
+    });
+  }
+);
