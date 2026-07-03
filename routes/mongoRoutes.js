@@ -34,7 +34,7 @@ import {
   getPersonalReport,
   getPersonalDetail,
   cerrarSesionesAbandonadas,
-  
+
   mercadoPagoWebhook,
   getProductImage
 } from "../controllers/MongoController.js";
@@ -69,7 +69,7 @@ router.get(
 );
 /* -------------------- ÓRDENES -------------------- */
 // Rutas fijas primero
-router.post("/orders/web-mp", createWebOrderMP); // Web + Mercado Pago
+//router.post("/orders/web-mp", createWebOrderMP); // Web + Mercado Pago
 router.post("/orders/web-mp/webhook", mercadoPagoWebhook); // Webhook Mercado Pago
 // Web + Mercado Pago
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
