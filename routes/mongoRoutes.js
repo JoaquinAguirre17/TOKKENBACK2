@@ -34,6 +34,9 @@ import {
   getPersonalReport,
   getPersonalDetail,
   cerrarSesionesAbandonadas,
+  createWebOrderMP,
+  mercadoPagoWebhook,
+  getProductImage
 } from "../controllers/MongoController.js";
 
 const router = express.Router();
@@ -60,10 +63,14 @@ router.post(
 );
 router.put("/products/:id", updateProduct);
 router.delete("/products/:id", deleteProduct);
-
+router.get(
+  "/products/:id/image/:index",
+  getProductImage
+);
 /* -------------------- ÓRDENES -------------------- */
 // Rutas fijas primero
-router.post("/orders/web-mp", createWebOrderMP);
+router.post("/orders/web-mp", createWebOrderMP); // Web + Mercado Pago
+router.post("/orders/web-mp/webhook", mercadoPagoWebhook); // Webhook Mercado Pago
 // Web + Mercado Pago
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);

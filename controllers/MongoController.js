@@ -37,135 +37,20 @@ dayjs.extend(timezone);
 // zona horaria del sistema POS
 const TZ = "America/Argentina/Cordoba";
 
+import { MercadoPagoConfig, Preference , Payment  } from "mercadopago";
+
+/* =========================
+   MP CLIENT
+========================= */
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN,
+});
+
+const preference = new Preference(client);
 
 // opcional: default global
 dayjs.tz.setDefault(TZ);
-import { MercadoPagoConfig, Preference } from "mercadopago";
-import CashClosure from "../Models/CashClosure.js";
 
-const mpClient = new Preference({ access_token: process.env.MP_ACCESS_TOKEN });
-
-export const createWebOrderMP = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const {
-      productos,
-      metodoPago,
-      customer,
-      shipping = 0,
-      tax = 0,
-      discount = 0,
-      notes,
-    } = req.body;
-
-    // 1️⃣ Validaciones básicas
-    if (!productos?.length) return res.status(400).json({ message: "Carrito vacío" });
-    if (!customer?.name || !customer?.email)
-      return res.status(400).json({ message: "Faltan datos del cliente" });
-
-    // 2️⃣ Traer productos de DB
-    const ids = productos.map(p => p.productId).filter(Boolean);
-    const productosDb = await Product.find({ _id: { $in: ids } }).lean();
-    const mapProd = new Map(productosDb.map(p => [String(p._id), p]));
-
-    // 3️⃣ Normalizar items
-    const normItems = productos.map(p => {
-      const pdb = p.productId ? mapProd.get(String(p.productId)) : null;
-      const unit = Number(p.price ?? pdb?.pricing?.sale ?? pdb?.pricing?.list ?? 0);
-      const qty = Number(p.qty ?? 1);
-      return {
-        productId: p.productId || pdb?._id,
-        title: p.title || pdb?.title || "",
-        price: unit,
-        qty,
-        subtotal: unit * qty,
-      };
-    });
-
-    const itemsSum = normItems.reduce((a, b) => a + b.subtotal, 0);
-    const grand = itemsSum + Number(shipping) + Number(tax) - Number(discount);
-
-    // 4️⃣ Generar orderNumber (ejemplo simple, ajusta según tu función)
-    const orderNumber = `WEB-${Date.now()}`;
-
-    const orderData = {
-      orderNumber,
-      channel: "online",
-      status: "created",
-      items: normItems,
-      totals: {
-        items: itemsSum,
-        discount,
-        shipping,
-        tax,
-        grand,
-        currency: "ARS",
-      },
-      customer,
-      payment: {
-        method: metodoPago || "otro",
-        status: "pending",
-        amount: grand,
-      },
-      notes: notes || `Orden web - Método: ${metodoPago}`,
-    };
-
-    // 5️⃣ Crear la orden en MongoDB
-    const [order] = await Order.create([orderData], { session });
-
-    // 6️⃣ Ajustar stock
-    // await adjustStock(session, normItems, -1); // Descomenta si tienes esta función
-
-    await session.commitTransaction();
-
-    // 7️⃣ Preparar pago con MercadoPago
-    let mpInitPoint = null;
-
-    if (metodoPago === "mercadopago") {
-      try {
-        const preference = {
-          items: normItems.map(i => ({
-            title: i.title,
-            quantity: i.qty,
-            currency_id: "ARS",
-            unit_price: Number(i.price),
-          })),
-          external_reference: order._id.toString(),
-          payer: {
-            name: customer.name,
-            email: customer.email,
-          },
-          back_urls: {
-            success: `${process.env.FRONT_URL}/checkout/success`,
-            failure: `${process.env.FRONT_URL}/checkout/failure`,
-            pending: `${process.env.FRONT_URL}/checkout/pending`,
-          },
-          auto_return: "approved",
-        };
-
-        const mpResp = await mpClient.create({ body: preference });
-        console.log("✅ MercadoPago response:", mpResp);
-
-        // Puede variar según SDK
-        mpInitPoint = mpResp.init_point || mpResp.body?.init_point || null;
-        if (!mpInitPoint) console.warn("⚠️ mpInitPoint no recibido de MP");
-      } catch (err) {
-        console.error("❌ MercadoPago fallo:", err.message);
-      }
-    }
-
-    res.status(201).json({ order, mpInitPoint });
-
-  } catch (err) {
-    await session.abortTransaction().catch(e => console.warn("AbortTransaction fallo:", e.message));
-    console.error("Error createWebOrderMP:", err);
-    res.status(500).json({ message: "Error al crear la orden web", error: err.message });
-  } finally {
-    session.endSession();
-  }
-};
 
 // -------------------------
 // Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
@@ -207,10 +92,98 @@ export const resolveChannel = (tags = []) => {
 // -------------------------
 export const getProducts = async (_req, res) => {
   try {
-    const items = await Product.find().lean();
+
+    const products = await Product
+      .find()
+      .select("-images.data")
+      .lean();
+
+    const items = products.map(product => ({
+
+      ...product,
+
+      images: (product.images || []).map(
+        (img, index) => {
+
+          // Imagen almacenada en MongoDB
+          if (img.source === "mongo") {
+
+            return {
+              alt: img.alt,
+              source: "mongo",
+
+              url:
+                `/api/products/${product._id}/image/${index}`
+            };
+
+          }
+
+          // Imagen externa
+          return {
+            url: img.url,
+            alt: img.alt,
+            source: "url"
+          };
+
+        }
+      )
+
+    }));
+
     res.json(items);
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+
+    console.error(
+      "ERROR GET PRODUCTS:",
+      e
+    );
+
+    res.status(500).json({
+      error: e.message
+    });
+
+  }
+};
+export const getProductImage = async (req, res) => {
+  try {
+
+    const { id, index } = req.params;
+
+    const product = await Product.findById(id);
+
+    if (!product) {
+      return res.status(404).json({
+        error: "Producto no encontrado"
+      });
+    }
+
+    const img = product.images?.[Number(index)];
+
+    if (!img) {
+      return res.status(404).json({
+        error: "Imagen no encontrada"
+      });
+    }
+
+    // 🌐 Imagen externa
+    if (img.source === "url" && img.url) {
+      return res.redirect(img.url);
+    }
+
+    // 🧠 Imagen desde MongoDB
+    res.set("Content-Type", img.contentType);
+
+    return res.send(img.data);
+
+  } catch (err) {
+
+    console.error("ERROR IMAGE:", err);
+
+    res.status(500).json({
+      error: err.message
+    });
+
   }
 };
 
@@ -259,11 +232,25 @@ export const createProduct = async (req, res) => {
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
+    /* =========================
+       VALIDACIONES
+    ========================= */
+
     if (!body.title) {
       return res.status(400).json({
         error: "title es requerido"
       });
     }
+
+    if (!body.pricing?.list) {
+      return res.status(400).json({
+        error: "pricing.list es requerido"
+      });
+    }
+
+    /* =========================
+       SKU AUTOMÁTICO
+    ========================= */
 
     if (!body.sku) {
       body.sku = generateSKU(
@@ -272,19 +259,25 @@ export const createProduct = async (req, res) => {
       );
     }
 
+    /* =========================
+       IMÁGENES SUBIDAS
+       (MongoDB)
+    ========================= */
+
     if (req.files?.length) {
 
       const uploadedImages = [];
 
       for (const file of req.files) {
 
-        const result = await uploadImage(
-          file.buffer
-        );
-
         uploadedImages.push({
-          url: result.secure_url,
-          alt: body.title
+          alt: body.title,
+
+          source: "mongo",
+
+          data: file.buffer,
+
+          contentType: file.mimetype
         });
 
       }
@@ -293,8 +286,42 @@ export const createProduct = async (req, res) => {
         ...(body.images || []),
         ...uploadedImages
       ];
+    }
+
+    /* =========================
+       NORMALIZAR URLS
+    ========================= */
+
+    if (body.images?.length) {
+
+      body.images = body.images.map(img => {
+
+        // Si viene como string
+        if (typeof img === "string") {
+          return {
+            url: img,
+            alt: body.title,
+            source: "url"
+          };
+        }
+
+        // Si viene objeto con url
+        if (img.url) {
+          return {
+            ...img,
+            source: "url"
+          };
+        }
+
+        return img;
+
+      });
 
     }
+
+    /* =========================
+       CREAR PRODUCTO
+    ========================= */
 
     const created =
       await Product.create(body);
@@ -316,11 +343,128 @@ export const createProduct = async (req, res) => {
 };
 export const updateProduct = async (req, res) => {
   try {
-    const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ error: "Producto no encontrado" });
+
+    const body =
+      req.body.product
+        ? JSON.parse(req.body.product)
+        : { ...req.body };
+
+    const product = await Product.findById(
+      req.params.id
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        error: "Producto no encontrado"
+      });
+    }
+
+    /* =========================
+       SKU
+    ========================= */
+
+    if (
+      !body.sku &&
+      (body.title || body.brand)
+    ) {
+      body.sku = generateSKU(
+        body.title || product.title,
+        body.brand || product.brand
+      );
+    }
+
+    /* =========================
+       IMÁGENES SUBIDAS
+    ========================= */
+
+    if (req.files?.length) {
+
+      const uploadedImages = [];
+
+      for (const file of req.files) {
+
+        uploadedImages.push({
+          alt:
+            body.title ||
+            product.title,
+
+          source: "mongo",
+
+          data: file.buffer,
+
+          contentType:
+            file.mimetype
+        });
+
+      }
+
+      body.images = [
+        ...(body.images || []),
+        ...uploadedImages
+      ];
+    }
+
+    /* =========================
+       NORMALIZAR URLS
+    ========================= */
+
+    if (body.images?.length) {
+
+      body.images = body.images.map(
+        (img) => {
+
+          if (
+            typeof img === "string"
+          ) {
+            return {
+              url: img,
+              alt:
+                body.title ||
+                product.title,
+              source: "url"
+            };
+          }
+
+          if (img.url) {
+            return {
+              ...img,
+              source: "url"
+            };
+          }
+
+          return img;
+        }
+      );
+
+    }
+
+    /* =========================
+       UPDATE
+    ========================= */
+
+    const updated =
+      await Product.findByIdAndUpdate(
+        req.params.id,
+        body,
+        {
+          new: true,
+          runValidators: true
+        }
+      );
+
     res.json(updated);
+
   } catch (e) {
-    res.status(400).json({ error: e.message });
+
+    console.error(
+      "ERROR UPDATE PRODUCT:",
+      e
+    );
+
+    res.status(400).json({
+      error: e.message
+    });
+
   }
 };
 
@@ -2970,3 +3114,252 @@ export const getPersonalReport = async (
   }
 
 };
+/* =========================
+   CREATE WEB CHECKOUT
+========================= */
+export const createWebCheckout = async (req, res) => {
+  try {
+    const {
+      customer,
+      deliveryType,
+      shipping,
+      productos,
+      total,
+    } = req.body;
+
+    /* =========================
+       VALIDACIÓN BÁSICA
+    ========================= */
+    if (!productos?.length) {
+      return res.status(400).json({
+        message: "Carrito vacío",
+      });
+    }
+
+    /* =========================
+       RECONSTRUIR ITEMS DESDE DB (IMPORTANTE)
+    ========================= */
+    const items = [];
+
+    for (const p of productos) {
+      const product = await Product.findById(p.productId);
+
+      if (!product) continue;
+
+      const price =
+        product.pricing?.sale || product.pricing?.list;
+
+      const qty = p.qty || 1;
+
+      items.push({
+        productId: product._id,
+        title: product.title,
+        sku: product.sku,
+        price,
+        qty,
+        subtotal: price * qty,
+      });
+    }
+
+    const subtotal = items.reduce(
+      (acc, i) => acc + i.subtotal,
+      0
+    );
+
+    const shippingCost =
+      deliveryType === "delivery" ? shipping : 0;
+
+    const grandTotal = subtotal + shippingCost;
+
+    /* =========================
+       CREAR WEB ORDER
+    ========================= */
+    const orderNumber = crypto
+      .randomBytes(6)
+      .toString("hex")
+      .toUpperCase();
+
+    const webOrder = await WebOrder.create({
+      orderNumber,
+      customer,
+      deliveryType,
+      shippingCost,
+      items,
+      totals: {
+        subtotal,
+        shipping: shippingCost,
+        total: grandTotal,
+      },
+    });
+
+    /* =========================
+       CREAR PREFERENCIA MP
+    ========================= */
+    const response = await preference.create({
+      body: {
+        items: [
+          ...items.map((i) => ({
+            title: i.title,
+            quantity: i.qty,
+            unit_price: i.price,
+            currency_id: "ARS",
+          })),
+          ...(shippingCost > 0
+            ? [
+              {
+                title: "Envío",
+                quantity: 1,
+                unit_price: shippingCost,
+                currency_id: "ARS",
+              },
+            ]
+            : []),
+        ],
+
+        metadata: {
+          webOrderId: webOrder._id.toString(),
+        },
+
+        payer: {
+          name: customer.name,
+          email: customer.email,
+        },
+
+        back_urls: {
+          success:
+            "https://tu-frontend.com/pago-exitoso",
+          failure:
+            "https://tu-frontend.com/pago-fallido",
+          pending:
+            "https://tu-frontend.com/pago-pendiente",
+        },
+
+        auto_return: "approved",
+
+        notification_url:
+          "https://tu-backend.com/api/payments/webhook",
+      },
+    });
+
+    /* =========================
+       GUARDAR preferenceId
+    ========================= */
+    webOrder.payment.preferenceId =
+      response.id;
+
+    await webOrder.save();
+
+    return res.json({
+      mpInitPoint: response.init_point,
+      orderId: webOrder._id,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Error creando checkout",
+    });
+  }
+};
+/* =========================
+   WEBHOOK
+========================= */
+export const mercadoPagoWebhook = async (req, res) => {
+  try {
+    const paymentId = req.query["data.id"];
+
+    if (!paymentId) {
+      return res.sendStatus(200);
+    }
+
+    /* =========================
+       CONSULTAR PAGO REAL
+    ========================= */
+    const payment = await paymentClient.get({
+      id: paymentId,
+    });
+
+    if (payment.status !== "approved") {
+      return res.sendStatus(200);
+    }
+
+    const webOrderId =
+      payment.metadata?.webOrderId;
+
+    if (!webOrderId) {
+      return res.sendStatus(200);
+    }
+
+    /* =========================
+       BUSCAR WEB ORDER
+    ========================= */
+    const webOrder = await WebOrder.findById(
+      webOrderId
+    );
+
+    if (!webOrder) {
+      return res.sendStatus(200);
+    }
+
+    /* =========================
+       EVITAR DUPLICADOS
+    ========================= */
+    if (webOrder.status === "paid") {
+      return res.sendStatus(200);
+    }
+
+    /* =========================
+       ACTUALIZAR WEB ORDER
+    ========================= */
+    webOrder.payment.status = "approved";
+    webOrder.payment.paymentId = paymentId;
+    webOrder.status = "paid";
+
+    await webOrder.save();
+
+    /* =========================
+       DESCONTAR STOCK
+    ========================= */
+    for (const item of webOrder.items) {
+      const product = await Product.findById(
+        item.productId
+      );
+
+      if (!product) continue;
+
+      const variant = product.variants?.[0];
+
+      if (variant) {
+        variant.stock -= item.qty;
+      }
+
+      await product.save();
+    }
+
+    /* =========================
+       CREAR ORDER FINAL (POS)
+    ========================= */
+    const orderNumber =
+      webOrder.orderNumber;
+
+    await Order.create({
+      orderNumber,
+      items: webOrder.items,
+      totals: {
+        items: webOrder.items.length,
+        subtotal: webOrder.totals.subtotal,
+        grand: webOrder.totals.total,
+      },
+      payment: {
+        method: "mercadopago",
+        status: "approved",
+        amount: webOrder.totals.total,
+      },
+      createdBy: "web",
+    });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error(error);
+    return res.sendStatus(500);
+  }
+}
