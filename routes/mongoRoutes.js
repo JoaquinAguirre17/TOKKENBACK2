@@ -34,7 +34,7 @@ import {
   getPersonalReport,
   getPersonalDetail,
   cerrarSesionesAbandonadas,
-  createWebOrderMP,
+  
   mercadoPagoWebhook,
   getProductImage
 } from "../controllers/MongoController.js";
