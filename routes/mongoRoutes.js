@@ -13,7 +13,7 @@ import {
   updateProduct,
   deleteProduct,
   createOrder,
-  createWebOrderMP,
+
   confirmOrder,
   listOrders,
   getOrderById,
