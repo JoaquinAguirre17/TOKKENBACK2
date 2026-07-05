@@ -37,7 +37,7 @@ dayjs.extend(timezone);
 // zona horaria del sistema POS
 const TZ = "America/Argentina/Cordoba";
 
-import { MercadoPagoConfig, Preference , Payment  } from "mercadopago";
+import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 
 /* =========================
    MP CLIENT
@@ -270,18 +270,21 @@ export const createProduct = async (req, res) => {
 
       for (const file of req.files) {
 
+        console.log("IMAGEN RECIBIDA:", {
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          bufferLength: file.buffer?.length
+        });
+
         uploadedImages.push({
           alt: body.title,
-
           source: "mongo",
-
           data: file.buffer,
-
           contentType: file.mimetype
         });
 
       }
-
       body.images = [
         ...(body.images || []),
         ...uploadedImages
