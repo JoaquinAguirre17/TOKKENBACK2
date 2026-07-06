@@ -352,9 +352,8 @@ export const updateProduct = async (req, res) => {
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
-    const product = await Product.findById(
-      req.params.id
-    );
+
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -362,100 +361,114 @@ export const updateProduct = async (req, res) => {
       });
     }
 
+
+    console.log("BODY UPDATE:", body);
+    console.log("FILES UPDATE:", req.files);
+
+
     /* =========================
-       SKU
+       SKU AUTOMÁTICO
     ========================= */
 
-    if (
-      !body.sku &&
-      (body.title || body.brand)
-    ) {
+    if (!body.sku && (body.title || body.brand)) {
+
       body.sku = generateSKU(
         body.title || product.title,
         body.brand || product.brand
       );
+
     }
 
+
     /* =========================
-       IMÁGENES SUBIDAS
+       IMÁGENES NUEVAS
     ========================= */
 
-    if (req.files?.length) {
+    if (req.files && req.files.length > 0) {
 
-      const uploadedImages = [];
+      const newImages = req.files.map(file => ({
 
-      for (const file of req.files) {
+        alt:
+          body.title ||
+          product.title,
 
-        uploadedImages.push({
-          alt:
-            body.title ||
-            product.title,
+        source: "mongo",
 
-          source: "mongo",
+        data: file.buffer,
 
-          data: file.buffer,
+        contentType: file.mimetype
 
-          contentType:
-            file.mimetype
-        });
+      }));
+
+
+      /*
+        Conservamos las imágenes anteriores
+        y agregamos las nuevas
+      */
+
+      body.images = [
+        ...(product.images || []),
+        ...newImages
+      ];
+
+    } else {
+
+      /*
+        Si no subió imágenes,
+        mantenemos las existentes
+      */
+
+      body.images = product.images;
+
+    }
+
+
+
+    /* =========================
+       NORMALIZAR IMÁGENES URL
+    ========================= */
+
+    body.images = body.images.map(img => {
+
+
+      if (typeof img === "string") {
+
+        return {
+          url: img,
+          alt: body.title || product.title,
+          source: "url"
+        };
 
       }
 
-      body.images = [
-        ...(body.images || []),
-        ...uploadedImages
-      ];
-    }
+
+      if (img.url) {
+
+        return {
+          ...img,
+          source: "url"
+        };
+
+      }
+
+
+      return img;
+
+    });
+
+
 
     /* =========================
-       NORMALIZAR URLS
+       GUARDAR
     ========================= */
 
-    if (body.images?.length) {
+    product.set(body);
 
-      body.images = body.images.map(
-        (img) => {
+    const updated = await product.save();
 
-          if (
-            typeof img === "string"
-          ) {
-            return {
-              url: img,
-              alt:
-                body.title ||
-                product.title,
-              source: "url"
-            };
-          }
-
-          if (img.url) {
-            return {
-              ...img,
-              source: "url"
-            };
-          }
-
-          return img;
-        }
-      );
-
-    }
-
-    /* =========================
-       UPDATE
-    ========================= */
-
-    const updated =
-      await Product.findByIdAndUpdate(
-        req.params.id,
-        body,
-        {
-          new: true,
-          runValidators: true
-        }
-      );
 
     res.json(updated);
+
 
   } catch (e) {
 
@@ -470,7 +483,6 @@ export const updateProduct = async (req, res) => {
 
   }
 };
-
 export const deleteProduct = async (req, res) => {
   try {
     const deleted = await Product.findByIdAndDelete(req.params.id);
