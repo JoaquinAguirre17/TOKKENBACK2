@@ -103,37 +103,33 @@ export const getProducts = async (_req, res) => {
 
       ...product,
 
-      images: (product.images || []).map(
-        (img, index) => {
+      images: (product.images || []).map((img, index) => {
 
 
-          // Imagen almacenada en MongoDB
-          if (
-            img.source === "mongo" ||
-            img.data ||
-            img.contentType
-          ) {
+        // Imagen guardada en Mongo
+        if (
+          img.source === "mongo" ||
+          img.contentType
+        ) {
 
-            return {
-              alt: img.alt || product.title,
-              source: "mongo",
-
-              url:
-              `https://tokkenback2.onrender.com/api/products/${product._id}/image/${index}`
-            };
-
-          }
-
-
-          // Imagen externa
           return {
-            url: img.url,
-            alt: img.alt,
-            source: "url"
+            url: `https://tokkenback2.onrender.com/api/products/${product._id}/image/${index}`,
+            alt: img.alt || product.title,
+            source: "mongo"
           };
 
         }
-      )
+
+
+        // Imagen externa
+        return {
+          url: img.url,
+          alt: img.alt || product.title,
+          source: "url"
+        };
+
+
+      })
 
     }));
 
@@ -143,13 +139,10 @@ export const getProducts = async (_req, res) => {
 
   } catch (e) {
 
-    console.error(
-      "ERROR GET PRODUCTS:",
-      e
-    );
+    console.error("ERROR GET PRODUCTS:", e);
 
     res.status(500).json({
-      error: e.message
+      error:e.message
     });
 
   }
