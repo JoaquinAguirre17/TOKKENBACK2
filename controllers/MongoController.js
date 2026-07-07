@@ -98,6 +98,7 @@ export const getProducts = async (_req, res) => {
       .select("-images.data")
       .lean();
 
+
     const items = products.map(product => ({
 
       ...product,
@@ -105,18 +106,24 @@ export const getProducts = async (_req, res) => {
       images: (product.images || []).map(
         (img, index) => {
 
+
           // Imagen almacenada en MongoDB
-          if (img.source === "mongo") {
+          if (
+            img.source === "mongo" ||
+            img.data ||
+            img.contentType
+          ) {
 
             return {
-              alt: img.alt,
+              alt: img.alt || product.title,
               source: "mongo",
 
               url:
-                `/api/products/${product._id}/image/${index}`
+              `https://tokkenback2.onrender.com/api/products/${product._id}/image/${index}`
             };
 
           }
+
 
           // Imagen externa
           return {
@@ -130,7 +137,9 @@ export const getProducts = async (_req, res) => {
 
     }));
 
+
     res.json(items);
+
 
   } catch (e) {
 
