@@ -61,7 +61,11 @@ router.post(
   upload.array("images"),
   createProduct
 );
-router.put("/products/:id", updateProduct);
+router.put(
+  "/products/:id",
+  upload.array("images"),
+  updateProduct
+);
 router.delete("/products/:id", deleteProduct);
 router.get(
   "/products/:id/image/:index",
