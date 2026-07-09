@@ -594,57 +594,29 @@ export const updateProduct = async (req, res) => {
 
   try {
 
-
-    /*
-      Cuando viene FormData:
-      req.body.product contiene el JSON
-
-      Cuando viene JSON normal:
-      usa req.body directamente
-    */
-
     const body =
       req.body.product
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
 
-
     const product =
       await Product.findById(req.params.id);
-
 
 
     if (!product) {
 
       return res.status(404).json({
-
         error: "Producto no encontrado"
-
       });
 
     }
 
 
-
-    console.log(
-      "========== UPDATE PRODUCT =========="
-    );
-
-    console.log(
-      "PRODUCT ID:",
-      req.params.id
-    );
-
-    console.log(
-      "BODY:",
-      body
-    );
-
-    console.log(
-      "FILES:",
-      req.files?.length || 0
-    );
+    console.log("========== UPDATE PRODUCT ==========");
+    console.log("PRODUCT ID:", req.params.id);
+    console.log("BODY:", body);
+    console.log("FILES:", req.files?.length || 0);
 
 
 
@@ -652,26 +624,21 @@ export const updateProduct = async (req, res) => {
     // SKU AUTOMÁTICO
     // ======================================================
 
-    if (
-      !body.sku &&
-      (body.title || body.brand)
-    ) {
+    if (!body.sku && (body.title || body.brand)) {
 
-      body.sku =
-        generateSKU(
-          body.title || product.title,
-          body.brand || product.brand
-        );
+      body.sku = generateSKU(
+        body.title || product.title,
+        body.brand || product.brand
+      );
 
     }
 
 
 
-
-
     // ======================================================
-    // MANEJO DE IMÁGENES
+    // IMÁGENES
     // ======================================================
+
 
     let finalImages = [
       ...(product.images || [])
@@ -679,69 +646,98 @@ export const updateProduct = async (req, res) => {
 
 
 
-    /*
-      Si llegan imágenes nuevas:
-      las agregamos a las existentes
-    */
+    // Si llegan imágenes nuevas
+    if (req.files?.length > 0) {
 
-    if (
-      req.files &&
-      req.files.length > 0
-    ) {
+
       console.log(
-        `Nuevas imágenes recibidas: ${req.files.length}`
+        "NUEVAS IMAGENES:",
+        req.files.length
       );
-      const newImages =
-        req.files.map(file => {
-          console.log(
-            "GUARDANDO IMAGEN:",
-            {
-              name: file.originalname,
-              type: file.mimetype,
-              size: file.size
-            }
-          );
-          return {
-            alt:
-              body.title ||
-              product.title,
-            source: "mongo",
-            data: file.buffer,
-            contentType: file.mimetype
-          };
+
+
+      const newImages = req.files.map(file => {
+
+
+        console.log("GUARDANDO IMAGEN:", {
+          name: file.originalname,
+          size: file.size,
+          type: file.mimetype
         });
+
+
+        return {
+
+          alt:
+            body.title ||
+            product.title,
+
+          source: "mongo",
+
+          data: file.buffer,
+
+          contentType: file.mimetype
+
+        };
+
+
+      });
+
+
+      /*
+        IMPORTANTE:
+        agregamos las nuevas imágenes
+        sin borrar las anteriores
+      */
+
       finalImages = [
         ...finalImages,
         ...newImages
       ];
-    }
-    else {
+
+
+    } else {
+
+
       console.log(
-        "No hay imágenes nuevas, se conservan existentes"
+        "NO HAY IMAGEN NUEVA"
       );
+
+
     }
-    /*
-      Normalizamos imágenes externas
-      para evitar formatos mezclados
-    */
+
+
+
+    // ======================================================
+    // NORMALIZAR IMAGENES
+    // ======================================================
+
     body.images =
       finalImages.map(img => {
-        // imagen URL
-        if (
-          typeof img === "string"
-        ) {
+
+
+        // Imagen URL antigua
+        if (typeof img === "string") {
+
           return {
+
             url: img,
+
             alt:
               body.title ||
               product.title,
+
             source: "url"
+
           };
+
         }
-        // Imagen externa existente
-        if (
-          img.url
-        ) {
+
+
+
+        // Imagen externa
+
+        if (img.url) {
 
           return {
 
@@ -752,21 +748,45 @@ export const updateProduct = async (req, res) => {
           };
 
         }
+
+
+
         // Imagen Mongo
+
         return img;
+
+
       });
-    // Actualizamos el producto con los datos del body y las imágenes finale
+
+
+
+    // ======================================================
+    // ACTUALIZAR PRODUCTO
+    // ======================================================
+
+
     product.set({
+
       ...body,
-      // aseguramos imágenes
+
       images: body.images
+
     });
+
+
+
     const updated =
       await product.save();
+
+
+
     console.log(
       "PRODUCTO ACTUALIZADO:",
       updated._id
     );
+
+
+
     return res.json({
 
       ok: true,
@@ -777,51 +797,62 @@ export const updateProduct = async (req, res) => {
       product: updated
 
     });
+
+
+
   } catch (error) {
+
+
     console.error(
       "ERROR UPDATE PRODUCT:",
       error
-    )    // JSON inválido enviado desde fronten
-    if (
-      error instanceof SyntaxError
-    ) {
+    );
+
+
+
+    if (error instanceof SyntaxError) {
 
       return res.status(400).json({
 
         error:
           "JSON inválido recibido en product"
 
-      })
+      });
 
-      // Error esquema Mong
-      if (
-        error.name === "ValidationError"
-      ) {
-
-        return res.status(400).json({
-
-          error:
-            "Error de validación",
-
-          details:
-            error.errors
-
-        });
+    }
 
 
-        return res.status(500).json({
 
-          error:
-            "Error interno actualizando producto",
+    if (error.name === "ValidationError") {
 
-          detail:
-            error.message
+      return res.status(400).json({
 
-        });
-      }
-    };
+        error:
+          "Error de validación",
+
+        details:
+          error.errors
+
+      });
+
+    }
+
+
+
+    return res.status(500).json({
+
+      error:
+        "Error interno actualizando producto",
+
+      detail:
+        error.message
+
+    });
+
+
   }
-}
+
+};
 export const deleteProduct = async (req, res) => {
   try {
     const deleted = await Product.findByIdAndDelete(req.params.id);
