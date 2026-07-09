@@ -90,6 +90,37 @@ export const resolveChannel = (tags = []) => {
 // -------------------------
 // Productoss
 // -------------------------
+// Normalizo las imágenes para que siempre tengan url, alt y source
+const normalizeProductImages = (product) => {
+
+  return {
+    ...product,
+
+    images: (product.images || []).map((img, index) => {
+
+      if (
+        img.source === "mongo" ||
+        img.contentType
+      ) {
+
+        return {
+          url: `https://tokkenback2.onrender.com/api/products/${product._id}/image/${index}`,
+          alt: img.alt || product.title,
+          source: "mongo"
+        };
+
+      }
+
+      return {
+        url: img.url,
+        alt: img.alt || product.title,
+        source: "url"
+      };
+
+    })
+  };
+
+};
 export const getProducts = async (_req, res) => {
   try {
 
@@ -191,38 +222,97 @@ export const getProductImage = async (req, res) => {
 
 export const getProductById = async (req, res) => {
   try {
-    const item = await Product.findById(req.params.id).lean();
-    if (!item) return res.status(404).json({ error: "Producto no encontrado" });
-    res.json(item);
+
+    const item = await Product
+      .findById(req.params.id)
+      .select("-images.data")
+      .lean();
+
+    if (!item) {
+      return res.status(404).json({
+        error: "Producto no encontrado"
+      });
+    }
+
+    res.json(
+      normalizeProductImages(item)
+    );
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+
+    res.status(500).json({
+      error: e.message
+    });
+
   }
 };
 
 export const getProductBySlug = async (req, res) => {
   try {
-    const item = await Product.findOne({ slug: req.params.slug }).lean();
-    if (!item) return res.status(404).json({ error: "Producto no encontrado" });
-    res.json(item);
+
+    const item = await Product
+      .findOne({ slug: req.params.slug })
+      .select("-images.data")
+      .lean();
+
+    if (!item) {
+      return res.status(404).json({
+        error: "Producto no encontrado"
+      });
+    }
+
+    res.json(
+      normalizeProductImages(item)
+    );
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+
+    res.status(500).json({
+      error: e.message
+    });
+
   }
 };
 
 export const searchProducts = async (req, res) => {
+
   const { query } = req.query;
-  if (!query || !query.trim()) {
-    return res.status(400).json({ message: "La consulta de búsqueda no puede estar vacía." });
+
+  if (!query?.trim()) {
+    return res.status(400).json({
+      message: "La consulta de búsqueda no puede estar vacía."
+    });
   }
+
   try {
-    const r = new RegExp(query.trim(), "i");
-    const items = await Product.find({ $or: [{ title: r }, { sku: r }, { brand: r }] })
+
+    const r = new RegExp(
+      query.trim(),
+      "i"
+    );
+
+    const items = await Product.find({
+      $or: [
+        { title: r },
+        { sku: r },
+        { brand: r }
+      ]
+    })
       .select("title pricing images _id")
       .limit(10)
       .lean();
-    res.json(items);
+
+    res.json(
+      items.map(normalizeProductImages)
+    );
+
   } catch (e) {
-    res.status(500).json({ message: "Error al buscar productos", error: e.message });
+
+    res.status(500).json({
+      message: "Error al buscar productos",
+      error: e.message
+    });
+
   }
 };
 
@@ -354,7 +444,6 @@ export const updateProduct = async (req, res) => {
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
-
     const product = await Product.findById(req.params.id);
 
     if (!product) {
@@ -363,10 +452,10 @@ export const updateProduct = async (req, res) => {
       });
     }
 
-
-    console.log("BODY UPDATE:", body);
-    console.log("FILES UPDATE:", req.files);
-
+    console.log("========== UPDATE PRODUCT ==========");
+    console.log("PRODUCT ID:", req.params.id);
+    console.log("BODY:", body);
+    console.log("FILES:", req.files?.length || 0);
 
     /* =========================
        SKU AUTOMÁTICO
@@ -381,58 +470,60 @@ export const updateProduct = async (req, res) => {
 
     }
 
-
     /* =========================
        IMÁGENES NUEVAS
     ========================= */
 
-    if (req.files && req.files.length > 0) {
+    if (req.files?.length > 0) {
 
-      const newImages = req.files.map(file => ({
+      console.log(
+        `Se recibieron ${req.files.length} imágenes nuevas`
+      );
 
-        alt:
-          body.title ||
-          product.title,
+      const uploadedImages = req.files.map(file => {
 
-        source: "mongo",
+        console.log("IMAGEN NUEVA:", {
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size
+        });
 
-        data: file.buffer,
+        return {
+          alt: body.title || product.title,
+          source: "mongo",
+          data: file.buffer,
+          contentType: file.mimetype
+        };
 
-        contentType: file.mimetype
+      });
 
-      }));
-
-
-      /*
-        Conservamos las imágenes anteriores
-        y agregamos las nuevas
-      */
+      // Conserva únicamente URLs externas
+      const externalImages = (product.images || []).filter(
+        img => img.source === "url"
+      );
 
       body.images = [
-        ...(product.images || []),
-        ...newImages
+        ...externalImages,
+        ...uploadedImages
       ];
 
     } else {
 
-      /*
-        Si no subió imágenes,
-        mantenemos las existentes
-      */
+      console.log(
+        "No se subieron imágenes nuevas, se conservan las existentes"
+      );
 
-      body.images = product.images;
+      body.images = product.images || [];
 
     }
 
-
-
     /* =========================
-       NORMALIZAR IMÁGENES URL
+       NORMALIZAR IMÁGENES
     ========================= */
 
-    body.images = body.images.map(img => {
+    body.images = (body.images || []).map(img => {
 
-
+      // URL como string
       if (typeof img === "string") {
 
         return {
@@ -443,44 +534,64 @@ export const updateProduct = async (req, res) => {
 
       }
 
-
+      // URL externa
       if (img.url) {
 
         return {
           ...img,
-          source: "url"
+          source: img.source || "url"
         };
 
       }
 
-
+      // Imagen Mongo
       return img;
 
     });
 
-
-
     /* =========================
-       GUARDAR
+       ACTUALIZAR PRODUCTO
     ========================= */
 
     product.set(body);
 
     const updated = await product.save();
 
-
-    res.json(updated);
-
-
-  } catch (e) {
-
-    console.error(
-      "ERROR UPDATE PRODUCT:",
-      e
+    console.log(
+      "PRODUCTO ACTUALIZADO:",
+      updated._id
     );
 
-    res.status(400).json({
-      error: e.message
+    return res.json({
+      ok: true,
+      message: "Producto actualizado correctamente",
+      product: updated
+    });
+
+  } catch (error) {
+
+    console.error(
+      "ERROR UPDATE PRODUCT:"
+    );
+
+    console.error(error);
+
+    if (error instanceof SyntaxError) {
+      return res.status(400).json({
+        error: "JSON inválido recibido en product"
+      });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: "Error de validación",
+        details: error.errors
+      });
+    }
+
+    return res.status(500).json({
+      error: "Error interno al actualizar producto",
+      detail: error.message
     });
 
   }
