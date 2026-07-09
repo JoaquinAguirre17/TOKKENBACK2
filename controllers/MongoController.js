@@ -604,19 +604,24 @@ export const updateProduct = async (req, res) => {
       await Product.findById(req.params.id);
 
 
+
     if (!product) {
 
       return res.status(404).json({
+
         error: "Producto no encontrado"
+
       });
 
     }
+
 
 
     console.log("========== UPDATE PRODUCT ==========");
     console.log("PRODUCT ID:", req.params.id);
     console.log("BODY:", body);
     console.log("FILES:", req.files?.length || 0);
+
 
 
 
@@ -635,8 +640,10 @@ export const updateProduct = async (req, res) => {
 
 
 
+
+
     // ======================================================
-    // IMÁGENES
+    // MANEJO DE IMÁGENES
     // ======================================================
 
 
@@ -646,61 +653,60 @@ export const updateProduct = async (req, res) => {
 
 
 
-    // Si llegan imágenes nuevas
+    /*
+      Si llega una imagen nueva:
+      reemplaza las imágenes anteriores
+    */
+
     if (req.files?.length > 0) {
 
 
       console.log(
-        "NUEVAS IMAGENES:",
+        "REEMPLAZANDO IMAGENES:",
         req.files.length
       );
 
 
-      const newImages = req.files.map(file => {
+
+      finalImages =
+        req.files.map(file => {
 
 
-        console.log("GUARDANDO IMAGEN:", {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype
+          console.log(
+            "GUARDANDO IMAGEN:",
+            {
+              name: file.originalname,
+              size: file.size,
+              type: file.mimetype
+            }
+          );
+
+
+
+          return {
+
+            alt:
+              body.title ||
+              product.title,
+
+            source: "mongo",
+
+            data: file.buffer,
+
+            contentType: file.mimetype
+
+          };
+
+
         });
 
-
-        return {
-
-          alt:
-            body.title ||
-            product.title,
-
-          source: "mongo",
-
-          data: file.buffer,
-
-          contentType: file.mimetype
-
-        };
-
-
-      });
-
-
-      /*
-        IMPORTANTE:
-        agregamos las nuevas imágenes
-        sin borrar las anteriores
-      */
-
-      finalImages = [
-        ...finalImages,
-        ...newImages
-      ];
 
 
     } else {
 
 
       console.log(
-        "NO HAY IMAGEN NUEVA"
+        "NO HAY IMAGEN NUEVA, CONSERVANDO EXISTENTES"
       );
 
 
@@ -708,16 +714,23 @@ export const updateProduct = async (req, res) => {
 
 
 
+
+
+
     // ======================================================
-    // NORMALIZAR IMAGENES
+    // NORMALIZAR IMÁGENES
     // ======================================================
 
     body.images =
       finalImages.map(img => {
 
 
-        // Imagen URL antigua
-        if (typeof img === "string") {
+
+        // Imagen URL externa
+
+        if (
+          typeof img === "string"
+        ) {
 
           return {
 
@@ -735,15 +748,20 @@ export const updateProduct = async (req, res) => {
 
 
 
-        // Imagen externa
 
-        if (img.url) {
+        // Imagen externa existente
+
+        if (
+          img.url
+        ) {
+
 
           return {
 
             ...img,
 
-            source: "url"
+            source:
+              img.source || "url"
 
           };
 
@@ -751,12 +769,17 @@ export const updateProduct = async (req, res) => {
 
 
 
-        // Imagen Mongo
+
+        // Imagen almacenada en Mongo
 
         return img;
 
 
+
       });
+
+
+
 
 
 
@@ -769,9 +792,11 @@ export const updateProduct = async (req, res) => {
 
       ...body,
 
-      images: body.images
+      images:
+        body.images
 
     });
+
 
 
 
@@ -780,10 +805,13 @@ export const updateProduct = async (req, res) => {
 
 
 
+
+
     console.log(
       "PRODUCTO ACTUALIZADO:",
       updated._id
     );
+
 
 
 
@@ -800,7 +828,9 @@ export const updateProduct = async (req, res) => {
 
 
 
+
   } catch (error) {
+
 
 
     console.error(
@@ -812,6 +842,7 @@ export const updateProduct = async (req, res) => {
 
     if (error instanceof SyntaxError) {
 
+
       return res.status(400).json({
 
         error:
@@ -819,11 +850,14 @@ export const updateProduct = async (req, res) => {
 
       });
 
+
     }
 
 
 
+
     if (error.name === "ValidationError") {
+
 
       return res.status(400).json({
 
@@ -835,7 +869,10 @@ export const updateProduct = async (req, res) => {
 
       });
 
+
     }
+
+
 
 
 
@@ -850,9 +887,12 @@ export const updateProduct = async (req, res) => {
     });
 
 
+
   }
 
 };
+
+
 export const deleteProduct = async (req, res) => {
   try {
     const deleted = await Product.findByIdAndDelete(req.params.id);
