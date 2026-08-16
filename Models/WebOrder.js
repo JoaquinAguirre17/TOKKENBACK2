@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const WebOrder = new mongoose.Schema(
+const webOrderItemSchema = new mongoose.Schema(
   {
     productId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -319,6 +319,6 @@ const webOrderSchema = new mongoose.Schema(
 
 export default mongoose.model(
   "WebOrder",
-  WebOrder,
+  webOrderSchema,
   "weborders"
 );
