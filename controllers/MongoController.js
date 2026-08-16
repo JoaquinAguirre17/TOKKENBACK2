@@ -4668,11 +4668,17 @@ export const mercadoPagoWebhook = async (req, res) => {
          *   qty
          * }
          */
+        const stockItems =
+          webOrder.items.map((item) => ({
+            productId: item.productId,
 
-        const stockItems = webOrder.items.map((item) => ({
-          productId: item.productId,
-          qty: Number(item.quantity || item.qty || 0),
-        }));
+            qty:
+              Number(
+                item.quantity ||
+                item.qty ||
+                0
+              ),
+          }));
 
         console.log(
           "📦 ITEMS PARA STOCK:",
