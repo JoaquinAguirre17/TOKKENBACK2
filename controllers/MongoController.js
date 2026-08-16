@@ -4669,35 +4669,28 @@ export const mercadoPagoWebhook = async (req, res) => {
          * }
          */
 
-        const stockItems =
-          webOrder.items.map(
-            (item) => ({
-
-              productId:
-                item.productId,
-
-              /*
-               * WebOrder puede tener quantity
-               * o qty dependiendo de cómo fue
-               * creado.
-               */
-
-              qty:
-                Number(
-                  item.quantity ??
-                  item.qty ??
-                  0
-                ),
-
-            })
-          );
-
+        const stockItems = webOrder.items.map((item) => ({
+          productId: item.productId,
+          qty: Number(item.quantity || item.qty || 0),
+        }));
 
         console.log(
           "📦 ITEMS PARA STOCK:",
           stockItems
         );
 
+        if (
+          stockItems.some(
+            (item) =>
+              !item.productId ||
+              !Number.isInteger(item.qty) ||
+              item.qty <= 0
+          )
+        ) {
+          throw new Error(
+            "Los items de la orden tienen cantidades inválidas para descontar stock."
+          );
+        }
 
         /* =================================================
            VALIDAR CANTIDADES
@@ -5868,6 +5861,44 @@ export const createWebOrderMP = async (req, res) => {
       error:
         error.message,
 
+    });
+
+  }
+
+};
+export const obtenerWebOrder = async (req, res) => {
+
+  try {
+
+    const order =
+      await WebOrder.findById(
+        req.params.id
+      );
+
+    if (!order) {
+
+      return res.status(404).json({
+        ok: false,
+        message: "Orden no encontrada"
+      });
+
+    }
+
+    return res.json({
+      ok: true,
+      order
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ ERROR OBTENIENDO WEB ORDER:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      message: "Error obteniendo la orden"
     });
 
   }

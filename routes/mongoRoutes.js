@@ -37,7 +37,7 @@ import {
   getOrderById,
   downloadOrderPDF,
   deleteOrder,
-
+  obtenerWebOrder,
 
   /* =====================================================
      MERCADO PAGO
@@ -301,7 +301,10 @@ router.get(
   listOrders
 );
 
-
+router.get(
+  "/orders/web/:id",
+  obtenerWebOrder
+);
 /* =====================================================
    IMPORTAR PRODUCTOS EXCEL
 ===================================================== */
