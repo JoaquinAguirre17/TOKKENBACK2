@@ -3,10 +3,19 @@
 import express from "express";
 import multer from "multer";
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const storage =
+  multer.memoryStorage();
+
+const upload =
+  multer({ storage });
+
 
 import {
+
+  /* =====================================================
+     PRODUCTOS
+  ===================================================== */
+
   getProducts,
   getProductById,
   getProductBySlug,
@@ -14,10 +23,13 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  getProductImage,
 
-  // =========================
-  // ÓRDENES
-  // =========================
+
+  /* =====================================================
+     ÓRDENES
+  ===================================================== */
+
   createOrder,
   createWebOrderMP,
   confirmOrder,
@@ -26,49 +38,62 @@ import {
   downloadOrderPDF,
   deleteOrder,
 
-  // =========================
-  // MERCADO PAGO
-  // =========================
+
+  /* =====================================================
+     MERCADO PAGO
+  ===================================================== */
+
   mercadoPagoWebhook,
 
-  // =========================
-  // CAJA
-  // =========================
+
+  /* =====================================================
+     CAJA
+  ===================================================== */
+
   obtenerVentasCierreCaja,
   exportarVentasExcel,
   obtenerVentasPorMes,
   crearIngreso,
 
-  // =========================
-  // PRODUCTOS / EXCEL
-  // =========================
+
+  /* =====================================================
+     EXCEL
+  ===================================================== */
+
   exportarProductosExcel,
   importarExcel,
-  getProductImage,
 
-  // =========================
-  // AUTH
-  // =========================
+
+  /* =====================================================
+     AUTH
+  ===================================================== */
+
   login,
   logout,
   checkSession,
 
-  // =========================
-  // CASH CLOSURE
-  // =========================
+
+  /* =====================================================
+     CASH CLOSURE
+  ===================================================== */
+
   getCashClosureModal,
   createCashClosure,
 
-  // =========================
-  // PERSONAL
-  // =========================
+
+  /* =====================================================
+     PERSONAL
+  ===================================================== */
+
   getPersonalReport,
   getPersonalDetail,
-  cerrarSesionesAbandonadas
+  cerrarSesionesAbandonadas,
 
 } from "../controllers/MongoController.js";
 
-const router = express.Router();
+
+const router =
+  express.Router();
 
 
 /* =====================================================
@@ -80,10 +105,12 @@ router.post(
   login
 );
 
+
 router.post(
   "/auth/check-session",
   checkSession
 );
+
 
 router.post(
   "/auth/logout",
@@ -100,25 +127,30 @@ router.get(
   getProducts
 );
 
+
 router.get(
   "/products/search",
   searchProducts
 );
+
 
 router.get(
   "/products/slug/:slug",
   getProductBySlug
 );
 
+
 router.get(
   "/products/export-excel",
   exportarProductosExcel
 );
 
+
 router.get(
   "/products/:id",
   getProductById
 );
+
 
 router.post(
   "/products",
@@ -126,16 +158,19 @@ router.post(
   createProduct
 );
 
+
 router.put(
   "/products/:id",
   upload.array("images"),
   updateProduct
 );
 
+
 router.delete(
   "/products/:id",
   deleteProduct
 );
+
 
 router.get(
   "/products/:id/image/:index",
@@ -148,14 +183,19 @@ router.get(
 ===================================================== */
 
 /*
-   Checkout web.
+  Crea:
 
-   Esta ruta crea la orden y,
-   si existe MP_ACCESS_TOKEN,
-   también crea la preferencia de Mercado Pago.
+  1. WebOrder
+  2. externalReference
+  3. Preference Mercado Pago
 
-   Si NO existe el token,
-   funciona en modo simulación.
+  Devuelve:
+
+  - orderId
+  - orderNumber
+  - preferenceId
+  - initPoint
+  - sandboxInitPoint
 */
 
 router.post(
@@ -165,7 +205,7 @@ router.post(
 
 
 /*
-   Webhook de Mercado Pago.
+  Webhook Mercado Pago
 */
 
 router.post(
@@ -183,6 +223,7 @@ router.post(
   confirmOrder
 );
 
+
 router.post(
   "/orders",
   createOrder
@@ -198,15 +239,18 @@ router.get(
   obtenerVentasCierreCaja
 );
 
+
 router.post(
   "/orders/export-excel",
   exportarVentasExcel
 );
 
+
 router.get(
   "/orders/cierre-mes",
   obtenerVentasPorMes
 );
+
 
 router.post(
   "/ingresos",
@@ -223,6 +267,7 @@ router.get(
   getCashClosureModal
 );
 
+
 router.post(
   "/cash-closure",
   createCashClosure
@@ -230,7 +275,7 @@ router.post(
 
 
 /* =====================================================
-   ÓRDENES - CONSULTAS
+   ÓRDENES POS - CONSULTAS
 ===================================================== */
 
 router.get(
@@ -238,15 +283,18 @@ router.get(
   downloadOrderPDF
 );
 
+
 router.get(
   "/orders/:id",
   getOrderById
 );
 
+
 router.delete(
   "/orders/:id",
   deleteOrder
 );
+
 
 router.get(
   "/orders",
@@ -274,10 +322,12 @@ router.post(
   cerrarSesionesAbandonadas
 );
 
+
 router.get(
   "/personal/report",
   getPersonalReport
 );
+
 
 router.get(
   "/personal/detail/:username",
