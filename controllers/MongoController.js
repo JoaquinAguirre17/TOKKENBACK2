@@ -46,6 +46,10 @@ const TZ = "America/Argentina/Cordoba";
 
 
 
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN || "TEST-0000000000000000"
+});
+
 const preference = new Preference(client);
 
 // opcional: default global
