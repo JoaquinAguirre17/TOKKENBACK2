@@ -18,6 +18,12 @@ import Ingreso from "../Models/Ingreso.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import {
+  MercadoPagoConfig,
+  Preference,
+} from "mercadopago";
+
+
 
 
 import User from "../Models/User.js";
@@ -37,14 +43,8 @@ dayjs.extend(timezone);
 // zona horaria del sistema POS
 const TZ = "America/Argentina/Cordoba";
 
-import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 
-/* =========================
-   MP CLIENT
-========================= */
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
-});
+
 
 const preference = new Preference(client);
 
@@ -3607,106 +3607,311 @@ export const createWebCheckout = async (req, res) => {
     });
   }
 };
-/* =========================
-   WEBHOOK
-========================= */
-export const mercadoPagoWebhook = async (req, res) => {
-  try {
-    const paymentId = req.query["data.id"];
+// ======================================================
+// MERCADO PAGO - CREAR PREFERENCE
+// ======================================================
 
-    if (!paymentId) {
-      return res.sendStatus(200);
+export const createMercadoPagoPreference = async (req, res) => {
+  try {
+    const { items, customer } = req.body;
+
+    // ==================================================
+    // VALIDACIONES
+    // ==================================================
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "El carrito está vacío.",
+      });
     }
 
-    /* =========================
-       CONSULTAR PAGO REAL
-    ========================= */
-    const payment = await paymentClient.get({
-      id: paymentId,
+    if (!customer) {
+      return res.status(400).json({
+        ok: false,
+        message: "Faltan los datos del comprador.",
+      });
+    }
+
+    // ==================================================
+    // OBTENER IDS
+    // ==================================================
+
+    const productIds = items
+      .map((item) => item.id || item._id)
+      .filter(Boolean)
+      .map((id) => String(id));
+
+    if (productIds.length !== items.length) {
+      return res.status(400).json({
+        ok: false,
+        message: "Uno o más productos no tienen ID.",
+      });
+    }
+
+    // ==================================================
+    // BUSCAR PRODUCTOS REALES EN MONGODB
+    // ==================================================
+
+    const products = await Product.find({
+      _id: {
+        $in: productIds,
+      },
     });
 
-    if (payment.status !== "approved") {
-      return res.sendStatus(200);
+    // ==================================================
+    // VERIFICAR QUE TODOS EXISTAN
+    // ==================================================
+
+    if (products.length !== productIds.length) {
+      return res.status(404).json({
+        ok: false,
+        message:
+          "Uno o más productos ya no existen.",
+      });
     }
 
-    const webOrderId =
-      payment.metadata?.webOrderId;
+    // ==================================================
+    // CREAR ITEMS PARA MERCADO PAGO
+    // ==================================================
 
-    if (!webOrderId) {
-      return res.sendStatus(200);
-    }
+    const mpItems = [];
 
-    /* =========================
-       BUSCAR WEB ORDER
-    ========================= */
-    const webOrder = await WebOrder.findById(
-      webOrderId
-    );
+    for (const item of items) {
 
-    if (!webOrder) {
-      return res.sendStatus(200);
-    }
-
-    /* =========================
-       EVITAR DUPLICADOS
-    ========================= */
-    if (webOrder.status === "paid") {
-      return res.sendStatus(200);
-    }
-
-    /* =========================
-       ACTUALIZAR WEB ORDER
-    ========================= */
-    webOrder.payment.status = "approved";
-    webOrder.payment.paymentId = paymentId;
-    webOrder.status = "paid";
-
-    await webOrder.save();
-
-    /* =========================
-       DESCONTAR STOCK
-    ========================= */
-    for (const item of webOrder.items) {
-      const product = await Product.findById(
-        item.productId
+      const product = products.find(
+        (p) =>
+          String(p._id) ===
+          String(item.id || item._id)
       );
 
-      if (!product) continue;
-
-      const variant = product.variants?.[0];
-
-      if (variant) {
-        variant.stock -= item.qty;
+      if (!product) {
+        return res.status(404).json({
+          ok: false,
+          message:
+            "No se encontró uno de los productos.",
+        });
       }
 
-      await product.save();
+      // -----------------------------------------------
+      // CANTIDAD
+      // -----------------------------------------------
+
+      const quantity = Number(
+        item.quantity
+      );
+
+      if (
+        !Number.isInteger(quantity) ||
+        quantity <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message:
+            `Cantidad inválida para ${product.title}.`,
+        });
+      }
+
+      // -----------------------------------------------
+      // STOCK
+      // -----------------------------------------------
+
+      const stock = Number(
+        product.variants?.[0]?.stock || 0
+      );
+
+      if (stock < quantity) {
+        return res.status(400).json({
+          ok: false,
+          message:
+            `No hay suficiente stock de ${product.title}.`,
+          stockDisponible: stock,
+          solicitado: quantity,
+        });
+      }
+
+      // -----------------------------------------------
+      // PRECIO REAL
+      // -----------------------------------------------
+
+      const price =
+        product.pricing?.sale ??
+        product.pricing?.list ??
+        product.variants?.[0]?.price ??
+        0;
+
+      const unitPrice = Number(price);
+
+      if (
+        !Number.isFinite(unitPrice) ||
+        unitPrice <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message:
+            `El producto ${product.title} no tiene un precio válido.`,
+        });
+      }
+
+      // -----------------------------------------------
+      // ITEM MERCADO PAGO
+      // -----------------------------------------------
+
+      mpItems.push({
+        id: String(product._id),
+
+        title: product.title,
+
+        description:
+          product.description ||
+          product.title,
+
+        quantity,
+
+        currency_id: "ARS",
+
+        unit_price: unitPrice,
+      });
     }
 
-    /* =========================
-       CREAR ORDER FINAL (POS)
-    ========================= */
-    const orderNumber =
-      webOrder.orderNumber;
+    // ==================================================
+    // CONFIGURACIÓN MERCADO PAGO
+    // ==================================================
 
-    await Order.create({
-      orderNumber,
-      items: webOrder.items,
-      totals: {
-        items: webOrder.items.length,
-        subtotal: webOrder.totals.subtotal,
-        grand: webOrder.totals.total,
-      },
-      payment: {
-        method: "mercadopago",
-        status: "approved",
-        amount: webOrder.totals.total,
-      },
-      createdBy: "web",
+    if (!process.env.MP_ACCESS_TOKEN) {
+      throw new Error(
+        "MP_ACCESS_TOKEN no está configurado."
+      );
+    }
+
+    const client =
+      new MercadoPagoConfig({
+        accessToken:
+          process.env.MP_ACCESS_TOKEN,
+      });
+
+    const preference =
+      new Preference(client);
+
+    // ==================================================
+    // REFERENCIA EXTERNA
+    // ==================================================
+
+    const externalReference =
+      `TOKKEN-${Date.now()}`;
+
+    // ==================================================
+    // CREAR PREFERENCE
+    // ==================================================
+
+    const response =
+      await preference.create({
+
+        body: {
+
+          items: mpItems,
+
+          payer: {
+            name:
+              customer.name ||
+              "",
+
+            surname:
+              customer.surname ||
+              "",
+
+            email:
+              customer.email ||
+              "",
+
+            phone: customer.phone
+              ? {
+                  number:
+                    String(
+                      customer.phone
+                    ),
+                }
+              : undefined,
+          },
+
+          back_urls: {
+
+            success:
+              `${process.env.FRONTEND_URL}/pago/exito`,
+
+            failure:
+              `${process.env.FRONTEND_URL}/pago/error`,
+
+            pending:
+              `${process.env.FRONTEND_URL}/pago/pendiente`,
+          },
+
+          auto_return:
+            "approved",
+
+          external_reference:
+            externalReference,
+        },
+      });
+
+    // ==================================================
+    // RESPUESTA
+    // ==================================================
+
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "✅ PREFERENCE MERCADO PAGO"
+    );
+
+    console.log(
+      "ID:",
+      response.id
+    );
+
+    console.log(
+      "REFERENCE:",
+      externalReference
+    );
+
+    console.log(
+      "===================================="
+    );
+
+    return res.status(201).json({
+
+      ok: true,
+
+      preferenceId:
+        response.id,
+
+      initPoint:
+        response.init_point,
+
+      sandboxInitPoint:
+        response.sandbox_init_point,
+
+      externalReference,
     });
 
-    return res.sendStatus(200);
   } catch (error) {
-    console.error(error);
-    return res.sendStatus(500);
+
+    console.error(
+      "❌ ERROR CREANDO PREFERENCE MP:",
+      error
+    );
+
+    return res.status(500).json({
+
+      ok: false,
+
+      message:
+        "No se pudo crear el pago.",
+
+      error:
+        error.message,
+    });
   }
-}
+};

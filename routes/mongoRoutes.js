@@ -36,9 +36,10 @@ import {
   cerrarSesionesAbandonadas,
 
   mercadoPagoWebhook,
+  createMercadoPagoPreference,
   getProductImage
-} from "../controllers/MongoController.js";
 
+} from "../controllers/MongoController.js";
 const router = express.Router();
 
 /* -------------------- AUTH -------------------- */
@@ -76,11 +77,16 @@ router.get(
 //router.post("/orders/web-mp", createWebOrderMP); // Web + Mercado Pago
 router.post("/orders/web-mp/webhook", mercadoPagoWebhook); // Webhook Mercado Pago
 // Web + Mercado Pago
+router.post(
+  "/orders/web-mp/create-preference",
+  createMercadoPagoPreference
+);
 router.post("/orders/confirm", confirmOrder);     // Confirmación POS
 router.get("/orders/cierre-caja", obtenerVentasCierreCaja);
 router.post("/orders/export-excel", exportarVentasExcel);
 router.get("/orders/cierre-mes", obtenerVentasPorMes);
 router.post("/ingresos", crearIngreso);
+
 
 
 /* =========================
