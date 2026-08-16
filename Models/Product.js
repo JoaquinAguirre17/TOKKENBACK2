@@ -22,6 +22,11 @@ const productSchema = new mongoose.Schema(
     category: String,
 
     tags: [String],
+    
+    featured: {
+      type: Boolean,
+      default: false,
+    },
 
     pricing: {
       currency: {
