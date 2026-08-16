@@ -4921,10 +4921,6 @@ export const createWebOrderMP = async (req, res) => {
     console.log("🛒 CREANDO ORDEN WEB");
     console.log("====================================");
 
-    /* =====================================================
-       DATOS RECIBIDOS
-    ===================================================== */
-
     const {
       items,
       customer,
@@ -4932,21 +4928,12 @@ export const createWebOrderMP = async (req, res) => {
       shippingCost = 0,
     } = req.body;
 
-    console.log("📦 ITEMS RECIBIDOS:", items);
-    console.log("👤 CUSTOMER RECIBIDO:", customer);
-    console.log("🚚 DELIVERY RECIBIDO:", delivery);
-    console.log("🚚 DELIVERY TYPE:", delivery?.type);
-    console.log("🚚 DELIVERY TIPO:", delivery?.tipo);
-
 
     /* =====================================================
        VALIDAR ITEMS
     ===================================================== */
 
-    if (
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
+    if (!Array.isArray(items) || items.length === 0) {
 
       return res.status(400).json({
         ok: false,
@@ -4969,42 +4956,17 @@ export const createWebOrderMP = async (req, res) => {
 
     }
 
-
-    const nombre =
-      String(
-        customer.name || ""
-      ).trim();
-
-
-    const apellido =
-      String(
-        customer.surname || ""
-      ).trim();
+    const nombre = String(customer.name || "").trim();
+    const apellido = String(customer.surname || "").trim();
+    const email = String(customer.email || "").trim().toLowerCase();
+    const telefono = String(customer.phone || "").trim();
 
 
-    const email =
-      String(
-        customer.email || ""
-      ).trim().toLowerCase();
-
-
-    const telefono =
-      String(
-        customer.phone || ""
-      ).trim();
-
-
-    if (
-      !nombre ||
-      !apellido ||
-      !email ||
-      !telefono
-    ) {
+    if (!nombre || !apellido || !email || !telefono) {
 
       return res.status(400).json({
         ok: false,
-        message:
-          "Faltan datos obligatorios del comprador.",
+        message: "Faltan datos obligatorios del comprador.",
       });
 
     }
@@ -5017,45 +4979,28 @@ export const createWebOrderMP = async (req, res) => {
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-
-    if (
-      !emailRegex.test(email)
-    ) {
+    if (!emailRegex.test(email)) {
 
       return res.status(400).json({
         ok: false,
-        message:
-          "El email ingresado no es válido.",
+        message: "El email ingresado no es válido.",
       });
 
     }
 
 
     /* =====================================================
-       TIPO DE ENTREGA
-       
-       Aceptamos:
-       
-       NUEVO:
-       delivery.type
-
-       ANTIGUO:
-       delivery.tipo
+       VALIDAR ENTREGA
     ===================================================== */
 
     const deliveryType =
-      String(
-        delivery?.type ||
-        delivery?.tipo ||
-        ""
-      )
-        .trim()
-        .toLowerCase();
+      String(delivery?.type || "").trim().toLowerCase();
 
 
-    /* =====================================================
-       VALIDAR TIPO DE ENTREGA
-    ===================================================== */
+    console.log("🚚 DELIVERY RECIBIDO:");
+    console.log(delivery);
+    console.log("🚚 TIPO ENTREGA:", deliveryType);
+
 
     if (
       deliveryType !== "pickup" &&
@@ -5064,65 +5009,39 @@ export const createWebOrderMP = async (req, res) => {
 
       return res.status(400).json({
         ok: false,
-        message:
-          "Tipo de entrega inválido.",
+        message: "Tipo de entrega inválido.",
+        received:
+          delivery?.type || null,
       });
 
     }
 
 
-    console.log(
-      "🚚 DELIVERY TYPE NORMALIZADO:",
-      deliveryType
-    );
-
-
     /* =====================================================
        DATOS DE ENTREGA
-       
-       Aceptamos nombres nuevos y antiguos.
     ===================================================== */
 
     const direccion =
       deliveryType === "delivery"
-        ? String(
-            delivery?.address ||
-            delivery?.direccion ||
-            ""
-          ).trim()
+        ? String(delivery?.address || "").trim()
         : "";
-
 
     const ciudad =
       deliveryType === "delivery"
-        ? String(
-            delivery?.city ||
-            delivery?.ciudad ||
-            ""
-          ).trim()
+        ? String(delivery?.city || "").trim()
         : "";
-
 
     const codigoPostal =
       deliveryType === "delivery"
-        ? String(
-            delivery?.postalCode ||
-            delivery?.codigoPostal ||
-            ""
-          ).trim()
+        ? String(delivery?.postalCode || "").trim()
         : "";
 
-
     const notas =
-      String(
-        delivery?.notes ||
-        delivery?.notas ||
-        ""
-      ).trim();
+      String(delivery?.notes || "").trim();
 
 
     /* =====================================================
-       VALIDAR DIRECCIÓN SOLO DELIVERY
+       DIRECCIÓN SOLO DELIVERY
     ===================================================== */
 
     if (
@@ -5132,43 +5051,34 @@ export const createWebOrderMP = async (req, res) => {
 
       return res.status(400).json({
         ok: false,
-        message:
-          "La dirección es obligatoria para delivery.",
+        message: "La dirección es obligatoria para delivery.",
       });
 
     }
 
 
     /* =====================================================
-       OBTENER IDS DE PRODUCTOS
+       OBTENER IDS
     ===================================================== */
 
-    const productIds =
-      items.map((item) => {
+    const productIds = items.map((item) =>
+      String(
+        item.id ||
+        item._id ||
+        ""
+      ).trim()
+    );
 
-        return String(
-          item.id ||
-          item._id ||
-          ""
-        );
-
-      });
-
-
-    /* =====================================================
-       VALIDAR IDS
-    ===================================================== */
 
     if (
       productIds.some(
-        (id) => !id
+        id => !id
       )
     ) {
 
       return res.status(400).json({
         ok: false,
-        message:
-          "Uno o más productos no tienen ID.",
+        message: "Uno o más productos no tienen ID.",
       });
 
     }
@@ -5178,13 +5088,9 @@ export const createWebOrderMP = async (req, res) => {
        VALIDAR OBJECT IDS
     ===================================================== */
 
-    for (
-      const id of productIds
-    ) {
+    for (const id of productIds) {
 
-      if (
-        !mongoose.Types.ObjectId.isValid(id)
-      ) {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
 
         return res.status(400).json({
           ok: false,
@@ -5210,8 +5116,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
     if (
-      products.length !==
-      productIds.length
+      products.length !== productIds.length
     ) {
 
       return res.status(404).json({
@@ -5229,12 +5134,10 @@ export const createWebOrderMP = async (req, res) => {
 
     const productMap =
       new Map(
-        products.map(
-          (product) => [
-            String(product._id),
-            product,
-          ]
-        )
+        products.map(product => [
+          String(product._id),
+          product,
+        ])
       );
 
 
@@ -5245,9 +5148,7 @@ export const createWebOrderMP = async (req, res) => {
     const normalizedItems = [];
 
 
-    for (
-      const item of items
-    ) {
+    for (const item of items) {
 
       const productId =
         String(
@@ -5257,9 +5158,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
       const product =
-        productMap.get(
-          productId
-        );
+        productMap.get(productId);
 
 
       if (!product) {
@@ -5278,9 +5177,7 @@ export const createWebOrderMP = async (req, res) => {
       =================================================== */
 
       const quantity =
-        Number(
-          item.quantity
-        );
+        Number(item.quantity);
 
 
       if (
@@ -5303,15 +5200,11 @@ export const createWebOrderMP = async (req, res) => {
 
       const stock =
         Number(
-          product
-            ?.variants?.[0]
-            ?.stock || 0
+          product.variants?.[0]?.stock || 0
         );
 
 
-      if (
-        stock < quantity
-      ) {
+      if (stock < quantity) {
 
         return res.status(400).json({
 
@@ -5337,9 +5230,9 @@ export const createWebOrderMP = async (req, res) => {
 
       let price =
         Number(
-          product?.pricing?.sale ??
-          product?.pricing?.list ??
-          product?.variants?.[0]?.price ??
+          product.pricing?.sale ??
+          product.pricing?.list ??
+          product.variants?.[0]?.price ??
           0
         );
 
@@ -5357,10 +5250,6 @@ export const createWebOrderMP = async (req, res) => {
 
       }
 
-
-      /* ===================================================
-         REDONDEAR PRECIO
-      =================================================== */
 
       price =
         Math.round(
@@ -5380,10 +5269,6 @@ export const createWebOrderMP = async (req, res) => {
         ) / 100;
 
 
-      /* ===================================================
-         ITEM NORMALIZADO
-      =================================================== */
-
       normalizedItems.push({
 
         productId:
@@ -5393,9 +5278,7 @@ export const createWebOrderMP = async (req, res) => {
           product.title,
 
         sku:
-          product
-            ?.variants?.[0]
-            ?.sku ||
+          product.variants?.[0]?.sku ||
           product.sku ||
           "",
 
@@ -5403,22 +5286,11 @@ export const createWebOrderMP = async (req, res) => {
 
         quantity,
 
-        /*
-         * IMPORTANTE:
-         * Guardamos qty también para que
-         * cualquier función que utilice
-         * qty pueda trabajar correctamente.
-         */
-        qty:
-          quantity,
-
         subtotal:
           itemSubtotal,
 
         image:
-          product
-            ?.images?.[0]
-            ?.url ||
+          product.images?.[0]?.url ||
           "",
 
         brand:
@@ -5453,10 +5325,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
     /* =====================================================
-       COSTO ENVÍO
-       
-       PICKUP = $0
-       DELIVERY = shippingCost
+       ENVÍO
     ===================================================== */
 
     let envio = 0;
@@ -5467,9 +5336,7 @@ export const createWebOrderMP = async (req, res) => {
     ) {
 
       envio =
-        Number(
-          shippingCost || 0
-        );
+        Number(shippingCost || 0);
 
     }
 
@@ -5500,36 +5367,29 @@ export const createWebOrderMP = async (req, res) => {
 
     const total =
       Math.round(
-        (
-          subtotal +
-          envio
-        ) * 100
+        (subtotal + envio) * 100
       ) / 100;
 
 
-    console.log("====================================");
     console.log("💰 SUBTOTAL:", subtotal);
     console.log("🚚 ENVÍO:", envio);
     console.log("💳 TOTAL:", total);
-    console.log("📦 TIPO ENTREGA:", deliveryType);
-    console.log("📍 DIRECCIÓN:", direccion);
-    console.log("====================================");
+    console.log("🚚 TIPO ENTREGA:", deliveryType);
 
 
     /* =====================================================
-       GENERAR NÚMERO DE ORDEN
+       GENERAR ORDEN
     ===================================================== */
 
     const timestamp =
       Date.now();
 
-
     const random =
       Math.floor(
         Math.random() * 10000
       )
-        .toString()
-        .padStart(4, "0");
+      .toString()
+      .padStart(4, "0");
 
 
     const orderNumber =
@@ -5622,25 +5482,18 @@ export const createWebOrderMP = async (req, res) => {
 
 
     /* =====================================================
-       VALIDAR MERCADO PAGO
+       VALIDAR TOKEN MP
     ===================================================== */
 
     if (
       !process.env.MP_ACCESS_TOKEN
     ) {
 
-      console.error(
-        "❌ MP_ACCESS_TOKEN NO CONFIGURADO"
-      );
-
-
       await WebOrder.findByIdAndDelete(
         webOrder._id
       );
 
-
       webOrder = null;
-
 
       return res.status(500).json({
         ok: false,
@@ -5665,50 +5518,44 @@ export const createWebOrderMP = async (req, res) => {
 
 
     const mpPreference =
-      new Preference(
-        mpClient
-      );
+      new Preference(mpClient);
 
 
     /* =====================================================
-       ITEMS MERCADO PAGO
+       ITEMS MP
     ===================================================== */
 
     const mpItems =
-      normalizedItems.map(
-        (item) => ({
+      normalizedItems.map(item => ({
 
-          id:
-            String(
-              item.productId
-            ),
+        id:
+          String(
+            item.productId
+          ),
 
-          title:
-            item.title,
+        title:
+          item.title,
 
-          description:
-            item.title,
+        description:
+          item.title,
 
-          quantity:
-            item.quantity,
+        quantity:
+          item.quantity,
 
-          currency_id:
-            "ARS",
+        currency_id:
+          "ARS",
 
-          unit_price:
-            item.price,
+        unit_price:
+          item.price,
 
-        })
-      );
+      }));
 
 
     /* =====================================================
-       AGREGAR ENVÍO
+       ENVÍO MP
     ===================================================== */
 
-    if (
-      envio > 0
-    ) {
+    if (envio > 0) {
 
       mpItems.push({
 
@@ -5743,10 +5590,7 @@ export const createWebOrderMP = async (req, res) => {
       (
         process.env.BACKEND_URL ||
         "https://tokkenback2.onrender.com"
-      ).replace(
-        /\/$/,
-        ""
-      );
+      ).replace(/\/$/, "");
 
 
     const notificationUrl =
@@ -5761,10 +5605,7 @@ export const createWebOrderMP = async (req, res) => {
       (
         process.env.FRONTEND_URL ||
         "https://tokkencba.com"
-      ).replace(
-        /\/$/,
-        ""
-      );
+      ).replace(/\/$/, "");
 
 
     /* =====================================================
@@ -5832,7 +5673,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
     /* =====================================================
-       VALIDAR RESPONSE MP
+       VALIDAR RESPONSE
     ===================================================== */
 
     if (
@@ -5848,7 +5689,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
     /* =====================================================
-       GUARDAR PREFERENCE ID
+       GUARDAR PREFERENCE
     ===================================================== */
 
     webOrder.mercadoPago =
@@ -5863,7 +5704,7 @@ export const createWebOrderMP = async (req, res) => {
 
 
     /* =====================================================
-       LOG FINAL
+       RESPUESTA
     ===================================================== */
 
     console.log("====================================");
@@ -5872,13 +5713,8 @@ export const createWebOrderMP = async (req, res) => {
     console.log("REFERENCE:", externalReference);
     console.log("PREFERENCE ID:", response.id);
     console.log("INIT POINT:", response.init_point);
-    console.log("SANDBOX:", response.sandbox_init_point);
     console.log("====================================");
 
-
-    /* =====================================================
-       RESPUESTA
-    ===================================================== */
 
     return res.status(201).json({
 
@@ -5911,22 +5747,12 @@ export const createWebOrderMP = async (req, res) => {
     console.error("====================================");
 
 
-    /* =====================================================
-       ELIMINAR ORDEN SI MP FALLÓ
-    ===================================================== */
-
-    if (
-      webOrder?._id
-    ) {
+    if (webOrder?._id) {
 
       try {
 
         await WebOrder.findByIdAndDelete(
           webOrder._id
-        );
-
-        console.log(
-          "🗑️ ORDEN PENDIENTE ELIMINADA"
         );
 
       } catch (deleteError) {
