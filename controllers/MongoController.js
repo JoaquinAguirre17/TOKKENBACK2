@@ -22,6 +22,7 @@ import crypto from "crypto";
 import {
   MercadoPagoConfig,
   Preference,
+  Payment,
 } from "mercadopago";
 
 
