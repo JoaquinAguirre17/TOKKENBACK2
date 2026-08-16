@@ -1375,11 +1375,9 @@ export const obtenerVentasCierreCaja = async (req, res) => {
       /* =========================
          TOTAL REAL DE LA VENTA
       ========================= */
-
-      const montoVenta =
-        Number(
-          o?.totals?.grand || 0
-        );
+      const montoVenta = Math.round(
+        Number(o?.totals?.grand || 0)
+      );
 
       /* =========================
          PRODUCTOS DE LA VENTA
@@ -1667,7 +1665,9 @@ export const obtenerVentasPorMes = async (req, res) => {
       const vendedor = o?.createdBy || "No especificado";
       const medioPago = o?.payment?.method || "No especificado";
 
-      const monto = Number(o?.totals?.grand || 0);
+      const montoVenta = Math.round(
+        Number(o?.totals?.grand || 0)
+      );
       const descuento = Number(o?.totals?.discountPercentage || 0);
 
       // 🧾 PRODUCTOS EN UNA SOLA VENTA
