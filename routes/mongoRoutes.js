@@ -3,15 +3,13 @@
 import express from "express";
 import multer from "multer";
 
-const storage =
-  multer.memoryStorage();
+const storage = multer.memoryStorage();
 
-const upload =
-  multer({ storage });
-
+const upload = multer({
+  storage,
+});
 
 import {
-
   /* =====================================================
      PRODUCTOS
   ===================================================== */
@@ -24,7 +22,6 @@ import {
   updateProduct,
   deleteProduct,
   getProductImage,
-
 
   /* =====================================================
      ÓRDENES
@@ -45,7 +42,6 @@ import {
 
   mercadoPagoWebhook,
 
-
   /* =====================================================
      CAJA
   ===================================================== */
@@ -55,14 +51,12 @@ import {
   obtenerVentasPorMes,
   crearIngreso,
 
-
   /* =====================================================
      EXCEL
   ===================================================== */
 
   exportarProductosExcel,
   importarExcel,
-
 
   /* =====================================================
      AUTH
@@ -72,14 +66,12 @@ import {
   logout,
   checkSession,
 
-
   /* =====================================================
      CASH CLOSURE
   ===================================================== */
 
   getCashClosureModal,
   createCashClosure,
-
 
   /* =====================================================
      PERSONAL
@@ -92,8 +84,7 @@ import {
 } from "../controllers/MongoController.js";
 
 
-const router =
-  express.Router();
+const router = express.Router();
 
 
 /* =====================================================
@@ -105,12 +96,10 @@ router.post(
   login
 );
 
-
 router.post(
   "/auth/check-session",
   checkSession
 );
-
 
 router.post(
   "/auth/logout",
@@ -127,30 +116,25 @@ router.get(
   getProducts
 );
 
-
 router.get(
   "/products/search",
   searchProducts
 );
-
 
 router.get(
   "/products/slug/:slug",
   getProductBySlug
 );
 
-
 router.get(
   "/products/export-excel",
   exportarProductosExcel
 );
 
-
 router.get(
   "/products/:id",
   getProductById
 );
-
 
 router.post(
   "/products",
@@ -158,19 +142,16 @@ router.post(
   createProduct
 );
 
-
 router.put(
   "/products/:id",
   upload.array("images"),
   updateProduct
 );
 
-
 router.delete(
   "/products/:id",
   deleteProduct
 );
-
 
 router.get(
   "/products/:id/image/:index",
@@ -183,19 +164,19 @@ router.get(
 ===================================================== */
 
 /*
-  Crea:
+   Crea:
 
-  1. WebOrder
-  2. externalReference
-  3. Preference Mercado Pago
+   1. WebOrder
+   2. externalReference
+   3. Preference Mercado Pago
 
-  Devuelve:
+   Devuelve:
 
-  - orderId
-  - orderNumber
-  - preferenceId
-  - initPoint
-  - sandboxInitPoint
+   - orderId
+   - orderNumber
+   - preferenceId
+   - initPoint
+   - sandboxInitPoint
 */
 
 router.post(
@@ -204,8 +185,13 @@ router.post(
 );
 
 
+/* =====================================================
+   WEBHOOK MERCADO PAGO
+===================================================== */
+
 /*
-  Webhook Mercado Pago
+   Mercado Pago notificará los pagos
+   mediante esta ruta.
 */
 
 router.post(
@@ -223,7 +209,6 @@ router.post(
   confirmOrder
 );
 
-
 router.post(
   "/orders",
   createOrder
@@ -239,18 +224,15 @@ router.get(
   obtenerVentasCierreCaja
 );
 
-
 router.post(
   "/orders/export-excel",
   exportarVentasExcel
 );
 
-
 router.get(
   "/orders/cierre-mes",
   obtenerVentasPorMes
 );
-
 
 router.post(
   "/ingresos",
@@ -267,7 +249,6 @@ router.get(
   getCashClosureModal
 );
 
-
 router.post(
   "/cash-closure",
   createCashClosure
@@ -283,28 +264,32 @@ router.get(
   downloadOrderPDF
 );
 
-
 router.get(
   "/orders/:id",
   getOrderById
 );
-
 
 router.delete(
   "/orders/:id",
   deleteOrder
 );
 
-
 router.get(
   "/orders",
   listOrders
 );
 
+
+/* =====================================================
+   ORDEN WEB INDIVIDUAL
+===================================================== */
+
 router.get(
   "/orders/web/:id",
   obtenerWebOrder
 );
+
+
 /* =====================================================
    IMPORTAR PRODUCTOS EXCEL
 ===================================================== */
@@ -325,17 +310,19 @@ router.post(
   cerrarSesionesAbandonadas
 );
 
-
 router.get(
   "/personal/report",
   getPersonalReport
 );
-
 
 router.get(
   "/personal/detail/:username",
   getPersonalDetail
 );
 
+
+/* =====================================================
+   EXPORTAR ROUTER
+===================================================== */
 
 export default router;
