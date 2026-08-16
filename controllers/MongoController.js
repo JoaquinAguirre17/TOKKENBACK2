@@ -9,7 +9,7 @@ import XLSX from "xlsx";
 
 import Product from "../Models/Product.js";
 import Order from "../Models/Order.js";
-import webOrder from "../Models/WebOrder.js";
+import WebOrder from "../models/WebOrder.js";
 import Counter from "../Models/Counter.js";
 import { adjustStock } from "../Utils/adjustStock.js";
 import { generateOrderNumber } from "../Utils/orderNumber.js";
