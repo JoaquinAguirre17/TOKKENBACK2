@@ -4258,47 +4258,21 @@ export const createMercadoPagoPreference = async (
 };
 export const mercadoPagoWebhook = async (req, res) => {
 
+  console.log("====================================");
+  console.log("🔔 WEBHOOK MERCADO PAGO");
+  console.log("BODY:");
+  console.log(req.body);
+  console.log("QUERY:");
+  console.log(req.query);
+  console.log("====================================");
+
   try {
 
-    console.log("====================================");
-    console.log("🔔 WEBHOOK MERCADO PAGO");
-    console.log("BODY:");
-    console.log(
-      JSON.stringify(
-        req.body,
-        null,
-        2
-      )
-    );
-
-    console.log("QUERY:");
-    console.log(req.query);
-
-    console.log("====================================");
-
-
     /* =====================================================
-       VALIDAR TOKEN
+       OBTENER TIPO DE EVENTO
     ===================================================== */
 
-    if (
-      !process.env.MP_ACCESS_TOKEN
-    ) {
-
-      console.error(
-        "❌ MP_ACCESS_TOKEN no configurado."
-      );
-
-      return res.sendStatus(500);
-
-    }
-
-
-    /* =====================================================
-       OBTENER TIPO
-    ===================================================== */
-
-    const type =
+    const topic =
       req.body?.type ||
       req.body?.topic ||
       req.query?.type ||
@@ -4306,17 +4280,17 @@ export const mercadoPagoWebhook = async (req, res) => {
 
 
     /* =====================================================
-       SOLO PAYMENT
+       IGNORAR EVENTOS QUE NO SEAN PAYMENT
     ===================================================== */
 
     if (
-      type !== "payment" &&
-      type !== "payments"
+      topic !== "payment" &&
+      topic !== "payment.created"
     ) {
 
       console.log(
         "ℹ️ Evento ignorado:",
-        type
+        topic
       );
 
       return res.sendStatus(200);
@@ -4325,20 +4299,21 @@ export const mercadoPagoWebhook = async (req, res) => {
 
 
     /* =====================================================
-       PAYMENT ID
+       OBTENER PAYMENT ID
     ===================================================== */
 
     const paymentId =
       req.body?.data?.id ||
+      req.body?.resource ||
       req.body?.id ||
-      req.query?.["data.id"] ||
-      req.query?.id;
+      req.query?.id ||
+      req.query?.["data.id"];
 
 
     if (!paymentId) {
 
-      console.warn(
-        "⚠️ Webhook sin payment ID."
+      console.log(
+        "⚠️ Webhook sin payment ID"
       );
 
       return res.sendStatus(200);
@@ -4353,7 +4328,22 @@ export const mercadoPagoWebhook = async (req, res) => {
 
 
     /* =====================================================
-       CLIENTE MERCADO PAGO
+       VALIDAR TOKEN MERCADO PAGO
+    ===================================================== */
+
+    if (!process.env.MP_ACCESS_TOKEN) {
+
+      console.error(
+        "❌ MP_ACCESS_TOKEN no configurado."
+      );
+
+      return res.sendStatus(500);
+
+    }
+
+
+    /* =====================================================
+       CREAR CLIENTE MERCADO PAGO
     ===================================================== */
 
     const client =
@@ -4365,15 +4355,19 @@ export const mercadoPagoWebhook = async (req, res) => {
       });
 
 
+    /* =====================================================
+       CREAR SERVICIO PAYMENT
+    ===================================================== */
+
     const payment =
       new Payment(client);
 
 
     /* =====================================================
-       CONSULTAR PAYMENT REAL
+       OBTENER INFORMACIÓN REAL DEL PAGO
     ===================================================== */
 
-    const paymentData =
+    const paymentResponse =
       await payment.get({
 
         id:
@@ -4382,48 +4376,55 @@ export const mercadoPagoWebhook = async (req, res) => {
       });
 
 
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "💳 INFORMACIÓN DEL PAGO"
+    );
+
+    console.log(
+      "ID:",
+      paymentResponse.id
+    );
+
+    console.log(
+      "STATUS:",
+      paymentResponse.status
+    );
+
+    console.log(
+      "STATUS DETAIL:",
+      paymentResponse.status_detail
+    );
+
+    console.log(
+      "AMOUNT:",
+      paymentResponse.transaction_amount
+    );
+
+    console.log(
+      "EXTERNAL REFERENCE:",
+      paymentResponse.external_reference
+    );
+
+    console.log(
+      "====================================");
+
+
     /* =====================================================
-       DATOS
+       BUSCAR ORDEN
     ===================================================== */
-
-    const status =
-      paymentData.status || "";
-
-
-    const statusDetail =
-      paymentData.status_detail || "";
-
 
     const externalReference =
-      paymentData.external_reference || "";
+      paymentResponse.external_reference;
 
 
-    console.log(
-      "💳 STATUS:",
-      status
-    );
+    if (!externalReference) {
 
-    console.log(
-      "📌 STATUS DETAIL:",
-      statusDetail
-    );
-
-    console.log(
-      "📌 EXTERNAL REFERENCE:",
-      externalReference
-    );
-
-
-    /* =====================================================
-       VALIDAR REFERENCIA
-    ===================================================== */
-
-    if (
-      !externalReference
-    ) {
-
-      console.warn(
-        "⚠️ Payment sin external_reference."
+      console.error(
+        "❌ El pago no tiene external_reference."
       );
 
       return res.sendStatus(200);
@@ -4431,14 +4432,11 @@ export const mercadoPagoWebhook = async (req, res) => {
     }
 
 
-    /* =====================================================
-       BUSCAR ORDEN WEB
-    ===================================================== */
-
     const webOrder =
       await WebOrder.findOne({
 
         externalReference:
+
           externalReference,
 
       });
@@ -4446,19 +4444,25 @@ export const mercadoPagoWebhook = async (req, res) => {
 
     if (!webOrder) {
 
-      console.warn(
-        "⚠️ No se encontró WebOrder:",
+      console.error(
+        "❌ No se encontró WebOrder para:",
         externalReference
       );
-
-      /*
-       * Respondemos 200 porque el evento
-       * fue recibido correctamente.
-       */
 
       return res.sendStatus(200);
 
     }
+
+
+    console.log(
+      "🟢 ORDEN ENCONTRADA:",
+      webOrder._id
+    );
+
+    console.log(
+      "🧾 ORDER NUMBER:",
+      webOrder.orderNumber
+    );
 
 
     /* =====================================================
@@ -4466,14 +4470,12 @@ export const mercadoPagoWebhook = async (req, res) => {
     ===================================================== */
 
     if (
-      webOrder.mercadoPago?.paymentId ===
-        String(paymentId) &&
-      webOrder.status === "paid"
+      webOrder.status === "paid" &&
+      webOrder.stockDiscounted === true
     ) {
 
       console.log(
-        "ℹ️ Pago ya procesado:",
-        paymentId
+        "ℹ️ El pago ya había sido procesado."
       );
 
       return res.sendStatus(200);
@@ -4482,33 +4484,133 @@ export const mercadoPagoWebhook = async (req, res) => {
 
 
     /* =====================================================
-       GUARDAR DATOS MERCADO PAGO
+       DATOS DEL PAGO
     ===================================================== */
 
-    webOrder.mercadoPago.paymentId =
-      String(paymentId);
+    const paymentStatus =
+      paymentResponse.status;
 
 
-    webOrder.mercadoPago.status =
-      status;
-
-
-    webOrder.mercadoPago.statusDetail =
-      statusDetail;
-
-
-    webOrder.mercadoPago.transactionAmount =
+    const paymentAmount =
       Number(
-        paymentData.transaction_amount ||
-        0
+        paymentResponse.transaction_amount || 0
       );
 
 
-    webOrder.mercadoPago.installments =
+    const orderTotal =
       Number(
-        paymentData.installments ||
-        1
+        webOrder.totals?.total || 0
       );
+
+
+    /* =====================================================
+       VALIDAR MONTO
+    ===================================================== */
+
+    if (
+      !Number.isFinite(paymentAmount)
+    ) {
+
+      console.error(
+        "❌ Monto de pago inválido."
+      );
+
+      return res.sendStatus(200);
+
+    }
+
+
+    if (
+      Math.abs(
+        paymentAmount -
+        orderTotal
+      ) > 0.01
+    ) {
+
+      console.error(
+        "❌ EL MONTO DEL PAGO NO COINCIDE"
+      );
+
+      console.error(
+        "Pago:",
+        paymentAmount
+      );
+
+      console.error(
+        "Orden:",
+        orderTotal
+      );
+
+      /*
+       * No aprobamos una orden si el monto
+       * recibido no coincide con el total.
+       */
+
+      webOrder.status =
+        "payment_amount_mismatch";
+
+
+      webOrder.mercadoPago = {
+
+        ...(webOrder.mercadoPago || {}),
+
+        paymentId:
+          String(paymentResponse.id),
+
+        status:
+          paymentStatus,
+
+        statusDetail:
+          paymentResponse.status_detail || "",
+
+        amount:
+          paymentAmount,
+
+        externalReference,
+
+      };
+
+
+      await webOrder.save();
+
+      return res.sendStatus(200);
+
+    }
+
+
+    /* =====================================================
+       GUARDAR INFORMACIÓN DEL PAGO
+    ===================================================== */
+
+    webOrder.mercadoPago = {
+
+      ...(webOrder.mercadoPago || {}),
+
+      paymentId:
+        String(paymentResponse.id),
+
+      preferenceId:
+        webOrder.mercadoPago?.preferenceId ||
+        "",
+
+      status:
+        paymentStatus,
+
+      statusDetail:
+        paymentResponse.status_detail || "",
+
+      amount:
+        paymentAmount,
+
+      externalReference,
+
+      paymentTypeId:
+        paymentResponse.payment_type_id || "",
+
+      paymentMethodId:
+        paymentResponse.payment_method_id || "",
+
+    };
 
 
     /* =====================================================
@@ -4516,92 +4618,88 @@ export const mercadoPagoWebhook = async (req, res) => {
     ===================================================== */
 
     if (
-      status === "approved"
+      paymentStatus === "approved"
     ) {
 
       console.log(
-        "🟢 PAGO APROBADO"
+        "===================================="
       );
 
+      console.log(
+        "✅ PAGO APROBADO"
+      );
 
-      /*
-       * Solo descontamos stock
-       * una vez.
-       */
+      console.log(
+        "💳 PAYMENT:",
+        paymentResponse.id
+      );
+
+      console.log(
+        "💰 MONTO:",
+        paymentAmount
+      );
+
+      console.log(
+        "🧾 ORDEN:",
+        webOrder.orderNumber
+      );
+
+      console.log(
+        "====================================");
+
+
+      /* =================================================
+         DESCONTAR STOCK
+      ================================================= */
 
       if (
         !webOrder.stockDiscounted
       ) {
+
+        console.log(
+          "📦 DESCONTANDO STOCK..."
+        );
+
 
         for (
           const item
           of webOrder.items
         ) {
 
-          if (
-            !item.productId
-          ) {
+          try {
 
-            continue;
+            await adjustStock({
 
-          }
+              productId:
+                item.productId,
 
+              quantity:
+                item.quantity,
 
-          const result =
-            await Product.findOneAndUpdate(
+              type:
+                "sale",
 
-              {
-                _id:
-                  item.productId,
+              reason:
+                `Venta web ${webOrder.orderNumber}`,
 
-                "variants.0.stock":
-                  {
-                    $gte:
-                      Number(
-                        item.quantity
-                      ),
-                  },
-              },
+            });
 
-              {
-                $inc: {
-
-                  "variants.0.stock":
-                    -Number(
-                      item.quantity
-                    ),
-
-                },
-              },
-
-              {
-                new: true,
-              }
-
+            console.log(
+              `✅ Stock descontado: ${item.title}`
             );
 
-
-          if (!result) {
+          } catch (stockError) {
 
             console.error(
-              "❌ No se pudo descontar stock:",
-              item.title
+              `❌ Error descontando stock de ${item.title}:`,
+              stockError
             );
-
 
             /*
-             * IMPORTANTE:
-             *
-             * No cancelamos el pago.
-             *
-             * El pago ya fue aprobado.
-             *
-             * Dejamos registro del problema.
+             * No cortamos todo el webhook.
+             * Lo dejamos registrado para poder
+             * revisar el problema.
              */
-
-            throw new Error(
-              `No se pudo descontar stock de ${item.title}`
-            );
 
           }
 
@@ -4614,16 +4712,24 @@ export const mercadoPagoWebhook = async (req, res) => {
       }
 
 
+      /* =================================================
+         ACTUALIZAR ORDEN
+      ================================================= */
+
       webOrder.status =
         "paid";
-
 
       webOrder.paidAt =
         new Date();
 
 
-      webOrder.mercadoPago.paidAt =
-        new Date();
+      await webOrder.save();
+
+
+      console.log(
+        "🎉 ORDEN MARCADA COMO PAGADA"
+      );
+
 
     }
 
@@ -4633,17 +4739,19 @@ export const mercadoPagoWebhook = async (req, res) => {
     ===================================================== */
 
     else if (
-      status === "pending" ||
-      status === "in_process"
+      paymentStatus === "pending" ||
+      paymentStatus === "in_process"
     ) {
-
-      console.log(
-        "🟡 PAGO PENDIENTE"
-      );
-
 
       webOrder.status =
         "pending_payment";
+
+      await webOrder.save();
+
+
+      console.log(
+        "🟡 PAGO PENDIENTE / EN PROCESO"
+      );
 
     }
 
@@ -4653,118 +4761,55 @@ export const mercadoPagoWebhook = async (req, res) => {
     ===================================================== */
 
     else if (
-      status === "rejected"
+      paymentStatus === "rejected"
     ) {
+
+      webOrder.status =
+        "payment_rejected";
+
+      await webOrder.save();
+
 
       console.log(
         "🔴 PAGO RECHAZADO"
       );
 
-
-      webOrder.status =
-        "cancelled";
-
-
-      webOrder.cancelledAt =
-        new Date();
-
-    }
-
-
-    /* =====================================================
-       PAGO CANCELADO
-    ===================================================== */
-
-    else if (
-      status === "cancelled"
-    ) {
-
       console.log(
-        "🔴 PAGO CANCELADO"
+        "Detalle:",
+        paymentResponse.status_detail
       );
 
-
-      webOrder.status =
-        "cancelled";
-
-
-      webOrder.cancelledAt =
-        new Date();
-
     }
 
 
     /* =====================================================
-       REEMBOLSADO
+       OTRO ESTADO
     ===================================================== */
 
-    else if (
-      status === "refunded"
-    ) {
+    else {
 
       console.log(
-        "🔴 PAGO REEMBOLSADO"
+        "ℹ️ Estado de pago no contemplado:",
+        paymentStatus
       );
 
-
-      webOrder.status =
-        "cancelled";
-
-
-      webOrder.cancelledAt =
-        new Date();
+      await webOrder.save();
 
     }
 
 
     /* =====================================================
-       GUARDAR ORDEN
+       RESPONDER A MERCADO PAGO
     ===================================================== */
-
-    await webOrder.save();
-
-
-    /* =====================================================
-       LOG
-    ===================================================== */
-
-    console.log(
-      "===================================="
-    );
-
-    console.log(
-      "✅ WEBORDER ACTUALIZADA"
-    );
-
-    console.log(
-      "ID:",
-      webOrder._id
-    );
-
-    console.log(
-      "NÚMERO:",
-      webOrder.orderNumber
-    );
-
-    console.log(
-      "ESTADO:",
-      webOrder.status
-    );
-
-    console.log(
-      "PAGO:",
-      webOrder.mercadoPago.status
-    );
-
-    console.log(
-      "===================================="
-    );
-
 
     return res.sendStatus(200);
 
 
   } catch (error) {
+
+    console.error(
+      "===================================="
+    );
 
     console.error(
       "❌ ERROR WEBHOOK MERCADO PAGO:"
@@ -4774,10 +4819,14 @@ export const mercadoPagoWebhook = async (req, res) => {
       error
     );
 
+    console.error(
+      "===================================="
+    );
+
 
     /*
-     * 500 permite que Mercado Pago
-     * pueda volver a intentar la notificación.
+     * Mercado Pago puede volver a enviar
+     * la notificación si recibe un error.
      */
 
     return res.sendStatus(500);
