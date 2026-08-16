@@ -4608,9 +4608,11 @@ export const mercadoPagoWebhook = async (req, res) => {
        PAGO APROBADO
     ===================================================== */
 
-    if (
-      paymentStatus === "approved"
-    ) {
+    /* =====================================================
+    PAGO APROBADO
+ ===================================================== */
+
+    if (paymentStatus === "approved") {
 
       console.log(
         "===================================="
@@ -4644,9 +4646,7 @@ export const mercadoPagoWebhook = async (req, res) => {
          DESCONTAR STOCK
       ================================================= */
 
-      if (
-        !webOrder.stockDiscounted
-      ) {
+      if (!webOrder.stockDiscounted) {
 
         console.log(
           "📦 DESCONTANDO STOCK..."
@@ -4654,13 +4654,14 @@ export const mercadoPagoWebhook = async (req, res) => {
 
 
         /*
-         * IMPORTANTE:
+         * Adaptamos WebOrder al formato
+         * que espera adjustStock.
          *
          * adjustStock espera:
          *
          * adjustStock(session, items, factor)
          *
-         * y cada item debe tener:
+         * y cada item:
          *
          * {
          *   productId,
@@ -4668,17 +4669,26 @@ export const mercadoPagoWebhook = async (req, res) => {
          * }
          */
 
-
         const stockItems =
           webOrder.items.map(
             (item) => ({
-              productId: item.productId,
 
-              qty: Number(
-                item.quantity ??
-                item.qty ??
-                0
-              ),
+              productId:
+                item.productId,
+
+              /*
+               * WebOrder puede tener quantity
+               * o qty dependiendo de cómo fue
+               * creado.
+               */
+
+              qty:
+                Number(
+                  item.quantity ??
+                  item.qty ??
+                  0
+                ),
+
             })
           );
 
@@ -4689,77 +4699,95 @@ export const mercadoPagoWebhook = async (req, res) => {
         );
 
 
-        try {
+        /* =================================================
+           VALIDAR CANTIDADES
+        ================================================= */
+
+        const cantidadInvalida =
+          stockItems.some(
+            (item) =>
+              !item.productId ||
+              !Number.isInteger(item.qty) ||
+              item.qty <= 0
+          );
+
+
+        if (cantidadInvalida) {
+
+          console.error(
+            "===================================="
+          );
+
+          console.error(
+            "❌ CANTIDAD DE STOCK INVÁLIDA"
+          );
+
+          console.error(
+            stockItems
+          );
+
+          console.error(
+            "===================================="
+          );
 
           /*
-           * No necesitamos modificar adjustStock.
+           * NO marcamos stockDiscounted=true.
            *
-           * Le pasamos:
-           * - null como session
-           * - el array de productos
-           * - -1 para descontar
+           * La orden queda pagada pero el stock
+           * queda pendiente de corrección.
            */
 
-          await adjustStock(
-            null,
-            stockItems,
-            -1
-          );
+        } else {
+
+          try {
+
+            await adjustStock(
+              null,
+              stockItems,
+              -1
+            );
 
 
-          console.log(
-            "===================================="
-          );
+            console.log(
+              "===================================="
+            );
 
-          console.log(
-            "✅ STOCK DESCONTADO CORRECTAMENTE"
-          );
+            console.log(
+              "✅ STOCK DESCONTADO CORRECTAMENTE"
+            );
 
-          console.log(
-            "===================================="
-          );
-
-
-          /*
-           * SOLO marcamos true si realmente
-           * se pudo descontar todo el stock.
-           */
-
-          webOrder.stockDiscounted =
-            true;
+            console.log(
+              "===================================="
+            );
 
 
-        } catch (stockError) {
-
-          console.error(
-            "===================================="
-          );
-
-          console.error(
-            "❌ ERROR DESCONTANDO STOCK"
-          );
-
-          console.error(
-            stockError
-          );
-
-          console.error(
-            "===================================="
-          );
+            webOrder.stockDiscounted =
+              true;
 
 
-          /*
-           * MUY IMPORTANTE:
-           *
-           * No marcamos stockDiscounted=true.
-           *
-           * De esta manera, si Mercado Pago
-           * vuelve a enviar el webhook,
-           * podemos intentar descontarlo nuevamente.
-           */
+          } catch (stockError) {
 
-          webOrder.stockDiscounted =
-            false;
+            console.error(
+              "===================================="
+            );
+
+            console.error(
+              "❌ ERROR DESCONTANDO STOCK"
+            );
+
+            console.error(
+              stockError
+            );
+
+            console.error(
+              "===================================="
+            );
+
+
+            webOrder.stockDiscounted =
+              false;
+
+          }
 
         }
 
@@ -4784,9 +4812,7 @@ export const mercadoPagoWebhook = async (req, res) => {
         "🎉 ORDEN MARCADA COMO PAGADA"
       );
 
-
     }
-
 
     /* =====================================================
        PAGO PENDIENTE
