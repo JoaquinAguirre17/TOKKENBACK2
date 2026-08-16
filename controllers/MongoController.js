@@ -4170,239 +4170,491 @@ export const createWebCheckout = async (req, res) => {
 // MERCADO PAGO - CREAR PREFERENCE
 // ======================================================
 
-export const createMercadoPagoPreference = async (req, res) => {
+export const createMercadoPagoPreference = async (
+  req,
+  res
+) => {
+
   try {
-    const { items, customer } = req.body;
 
-    // ==================================================
-    // VALIDACIONES
-    // ==================================================
+    /* ==================================================
+       DATOS RECIBIDOS
+    ================================================== */
 
-    if (!Array.isArray(items) || items.length === 0) {
+    const {
+      items,
+      customer,
+      entrega,
+    } = req.body;
+
+    /* ==================================================
+       VALIDAR ITEMS
+    ================================================== */
+
+    if (
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
+
       return res.status(400).json({
+
         ok: false,
-        message: "El carrito está vacío.",
+
+        message:
+          "El carrito está vacío.",
+
       });
+
     }
+
+    /* ==================================================
+       VALIDAR CUSTOMER
+    ================================================== */
 
     if (!customer) {
+
       return res.status(400).json({
+
         ok: false,
-        message: "Faltan los datos del comprador.",
+
+        message:
+          "Faltan los datos del comprador.",
+
       });
+
     }
 
-    // ==================================================
-    // OBTENER IDS
-    // ==================================================
+    if (
+      !customer.name ||
+      !customer.surname ||
+      !customer.email ||
+      !customer.phone
+    ) {
 
-    const productIds = items
-      .map((item) => item.id || item._id)
-      .filter(Boolean)
-      .map((id) => String(id));
-
-    if (productIds.length !== items.length) {
       return res.status(400).json({
+
         ok: false,
-        message: "Uno o más productos no tienen ID.",
+
+        message:
+          "Faltan datos obligatorios del comprador.",
+
       });
+
     }
 
-    // ==================================================
-    // BUSCAR PRODUCTOS REALES EN MONGODB
-    // ==================================================
+    /* ==================================================
+       VALIDAR ENTREGA
+    ================================================== */
 
-    const products = await Product.find({
-      _id: {
-        $in: productIds,
-      },
-    });
+    const tipoEntrega =
+      entrega?.tipo === "pickup"
+        ? "pickup"
+        : "delivery";
 
-    // ==================================================
-    // VERIFICAR QUE TODOS EXISTAN
-    // ==================================================
+    if (
+      tipoEntrega === "delivery" &&
+      !entrega?.direccion
+    ) {
 
-    if (products.length !== productIds.length) {
+      return res.status(400).json({
+
+        ok: false,
+
+        message:
+          "Falta la dirección de entrega.",
+
+      });
+
+    }
+
+    /* ==================================================
+       OBTENER IDS
+    ================================================== */
+
+    const productIds =
+      items
+        .map(
+          (item) =>
+            item.id ||
+            item._id
+        )
+        .filter(Boolean)
+        .map(
+          (id) =>
+            String(id)
+        );
+
+    /* ==================================================
+       VALIDAR IDS
+    ================================================== */
+
+    if (
+      productIds.length !==
+      items.length
+    ) {
+
+      return res.status(400).json({
+
+        ok: false,
+
+        message:
+          "Uno o más productos no tienen ID.",
+
+      });
+
+    }
+
+    /* ==================================================
+       BUSCAR PRODUCTOS
+    ================================================== */
+
+    const products =
+      await Product.find({
+
+        _id: {
+          $in: productIds,
+        },
+
+      }).lean();
+
+    /* ==================================================
+       VERIFICAR EXISTENCIA
+    ================================================== */
+
+    if (
+      products.length !==
+      productIds.length
+    ) {
+
       return res.status(404).json({
+
         ok: false,
+
         message:
           "Uno o más productos ya no existen.",
+
       });
+
     }
 
-    // ==================================================
-    // CREAR ITEMS PARA MERCADO PAGO
-    // ==================================================
+    /* ==================================================
+       CREAR ITEMS MP
+    ================================================== */
 
     const mpItems = [];
 
+    let subtotal = 0;
+
     for (const item of items) {
 
-      const product = products.find(
-        (p) =>
-          String(p._id) ===
-          String(item.id || item._id)
-      );
+      const product =
+        products.find(
+          (p) =>
+            String(p._id) ===
+            String(
+              item.id ||
+              item._id
+            )
+        );
 
       if (!product) {
+
         return res.status(404).json({
+
           ok: false,
+
           message:
             "No se encontró uno de los productos.",
+
         });
+
       }
 
-      // -----------------------------------------------
-      // CANTIDAD
-      // -----------------------------------------------
+      /* ================================================
+         CANTIDAD
+      ================================================ */
 
-      const quantity = Number(
-        item.quantity
-      );
+      const quantity =
+        Number(
+          item.quantity
+        );
 
       if (
         !Number.isInteger(quantity) ||
         quantity <= 0
       ) {
+
         return res.status(400).json({
+
           ok: false,
+
           message:
             `Cantidad inválida para ${product.title}.`,
+
         });
+
       }
 
-      // -----------------------------------------------
-      // STOCK
-      // -----------------------------------------------
+      /* ================================================
+         STOCK
+      ================================================ */
 
-      const stock = Number(
-        product.variants?.[0]?.stock || 0
-      );
-
-      if (stock < quantity) {
-        return res.status(400).json({
-          ok: false,
-          message:
-            `No hay suficiente stock de ${product.title}.`,
-          stockDisponible: stock,
-          solicitado: quantity,
-        });
-      }
-
-      // -----------------------------------------------
-      // PRECIO REAL
-      // -----------------------------------------------
-
-      const price =
-        product.pricing?.sale ??
-        product.pricing?.list ??
-        product.variants?.[0]?.price ??
-        0;
-
-      const unitPrice = Number(price);
+      const stock =
+        Number(
+          product
+            ?.variants?.[0]
+            ?.stock || 0
+        );
 
       if (
-        !Number.isFinite(unitPrice) ||
-        unitPrice <= 0
+        stock < quantity
       ) {
+
         return res.status(400).json({
+
           ok: false,
+
           message:
-            `El producto ${product.title} no tiene un precio válido.`,
+            `No hay suficiente stock de ${product.title}.`,
+
+          stockDisponible:
+            stock,
+
+          solicitado:
+            quantity,
+
         });
+
       }
 
-      // -----------------------------------------------
-      // ITEM MERCADO PAGO
-      // -----------------------------------------------
+      /* ================================================
+         PRECIO REAL DB
+      ================================================ */
+
+      const price =
+        product?.pricing?.sale ??
+        product?.pricing?.list ??
+        product?.variants?.[0]?.price ??
+        0;
+
+      const unitPrice =
+        Number(price);
+
+      if (
+        !Number.isFinite(
+          unitPrice
+        ) ||
+        unitPrice <= 0
+      ) {
+
+        return res.status(400).json({
+
+          ok: false,
+
+          message:
+            `El producto ${product.title} no tiene un precio válido.`,
+
+        });
+
+      }
+
+      /* ================================================
+         SUBTOTAL
+      ================================================ */
+
+      const itemSubtotal =
+        unitPrice *
+        quantity;
+
+      subtotal +=
+        itemSubtotal;
+
+      /* ================================================
+         ITEM MERCADO PAGO
+      ================================================ */
 
       mpItems.push({
-        id: String(product._id),
 
-        title: product.title,
+        id:
+          String(
+            product._id
+          ),
+
+        title:
+          product.title,
 
         description:
           product.description ||
           product.title,
 
-        quantity,
+        quantity:
+          quantity,
 
-        currency_id: "ARS",
+        currency_id:
+          "ARS",
 
-        unit_price: unitPrice,
+        unit_price:
+          unitPrice,
+
       });
+
     }
 
-    // ==================================================
-    // CONFIGURACIÓN MERCADO PAGO
-    // ==================================================
+    /* ==================================================
+       COSTO ENVÍO
+    ================================================== */
 
-    if (!process.env.MP_ACCESS_TOKEN) {
-      throw new Error(
-        "MP_ACCESS_TOKEN no está configurado."
-      );
+    const costoEnvio =
+      tipoEntrega === "delivery"
+        ? 1500
+        : 0;
+
+    /* ==================================================
+       AGREGAR ENVÍO COMO ITEM
+    ================================================== */
+
+    if (
+      costoEnvio > 0
+    ) {
+
+      mpItems.push({
+
+        id:
+          "ENVIO-TOKKEN",
+
+        title:
+          "Envío a domicilio",
+
+        description:
+          "Costo de envío",
+
+        quantity:
+          1,
+
+        currency_id:
+          "ARS",
+
+        unit_price:
+          costoEnvio,
+
+      });
+
     }
+
+    /* ==================================================
+       TOTAL
+    ================================================== */
+
+    const total =
+      subtotal +
+      costoEnvio;
+
+    /* ==================================================
+       MERCADO PAGO TOKEN
+    ================================================== */
+
+    if (
+      !process.env.MP_ACCESS_TOKEN
+    ) {
+
+      return res.status(500).json({
+
+        ok: false,
+
+        message:
+          "MP_ACCESS_TOKEN no está configurado en el servidor.",
+
+      });
+
+    }
+
+    /* ==================================================
+       CLIENTE MERCADO PAGO
+    ================================================== */
 
     const client =
       new MercadoPagoConfig({
+
         accessToken:
           process.env.MP_ACCESS_TOKEN,
+
       });
 
-    const preference =
-      new Preference(client);
+    /* ==================================================
+       PREFERENCE
+    ================================================== */
 
-    // ==================================================
-    // REFERENCIA EXTERNA
-    // ==================================================
+    const preference =
+      new Preference(
+        client
+      );
+
+    /* ==================================================
+       REFERENCIA
+    ================================================== */
 
     const externalReference =
       `TOKKEN-${Date.now()}`;
 
-    // ==================================================
-    // CREAR PREFERENCE
-    // ==================================================
+    /* ==================================================
+       URLS
+    ================================================== */
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "https://tokkencba.com";
+
+    /* ==================================================
+       CREAR PREFERENCE
+    ================================================== */
 
     const response =
       await preference.create({
 
         body: {
 
-          items: mpItems,
+          items:
+            mpItems,
 
           payer: {
+
             name:
-              customer.name ||
-              "",
+              String(
+                customer.name
+              ),
 
             surname:
-              customer.surname ||
-              "",
+              String(
+                customer.surname
+              ),
 
             email:
-              customer.email ||
-              "",
+              String(
+                customer.email
+              ),
 
-            phone: customer.phone
-              ? {
-                  number:
-                    String(
-                      customer.phone
-                    ),
-                }
-              : undefined,
+            phone: {
+
+              number:
+                String(
+                  customer.phone
+                ),
+
+            },
+
           },
 
           back_urls: {
 
             success:
-              `${process.env.FRONTEND_URL}/pago/exito`,
+              `${frontendUrl}/pago/exito`,
 
             failure:
-              `${process.env.FRONTEND_URL}/pago/error`,
+              `${frontendUrl}/pago/error`,
 
             pending:
-              `${process.env.FRONTEND_URL}/pago/pendiente`,
+              `${frontendUrl}/pago/pendiente`,
+
           },
 
           auto_return:
@@ -4410,19 +4662,65 @@ export const createMercadoPagoPreference = async (req, res) => {
 
           external_reference:
             externalReference,
+
+          metadata: {
+
+            customer_name:
+              customer.name,
+
+            customer_surname:
+              customer.surname,
+
+            customer_email:
+              customer.email,
+
+            customer_phone:
+              customer.phone,
+
+            delivery_type:
+              tipoEntrega,
+
+            address:
+              entrega?.direccion ||
+              "",
+
+            city:
+              entrega?.ciudad ||
+              "",
+
+            postal_code:
+              entrega?.codigoPostal ||
+              "",
+
+            notes:
+              entrega?.notas ||
+              "",
+
+            subtotal:
+              subtotal,
+
+            shipping:
+              costoEnvio,
+
+            total:
+              total,
+
+          },
+
         },
+
       });
 
-    // ==================================================
-    // RESPUESTA
-    // ==================================================
+    /* ==================================================
+       LOG
+    ================================================== */
 
     console.log(
       "===================================="
     );
 
     console.log(
-      "✅ PREFERENCE MERCADO PAGO"
+      "✅ PREFERENCE MERCADO PAGO CREADA"
     );
 
     console.log(
@@ -4436,8 +4734,27 @@ export const createMercadoPagoPreference = async (req, res) => {
     );
 
     console.log(
+      "SUBTOTAL:",
+      subtotal
+    );
+
+    console.log(
+      "ENVÍO:",
+      costoEnvio
+    );
+
+    console.log(
+      "TOTAL:",
+      total
+    );
+
+    console.log(
       "===================================="
     );
+
+    /* ==================================================
+       RESPUESTA
+    ================================================== */
 
     return res.status(201).json({
 
@@ -4453,6 +4770,14 @@ export const createMercadoPagoPreference = async (req, res) => {
         response.sandbox_init_point,
 
       externalReference,
+
+      subtotal,
+
+      shipping:
+        costoEnvio,
+
+      total,
+
     });
 
   } catch (error) {
@@ -4470,7 +4795,11 @@ export const createMercadoPagoPreference = async (req, res) => {
         "No se pudo crear el pago.",
 
       error:
-        error.message,
+        error?.message ||
+        "Error desconocido.",
+
     });
+
   }
+
 };
