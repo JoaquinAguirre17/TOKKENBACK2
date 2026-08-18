@@ -3477,7 +3477,7 @@ export const getPersonalReport = async (
 /* =========================
    CREATE WEB CHECKOUT
 ========================= */
-export const createWebCheckout = async (req, res) => {
+/*export const createWebCheckout = async (req, res) => {
   try {
     const {
       customer,
@@ -3490,140 +3490,140 @@ export const createWebCheckout = async (req, res) => {
     /* =========================
        VALIDACIÓN BÁSICA
     ========================= */
-    if (!productos?.length) {
-      return res.status(400).json({
-        message: "Carrito vacío",
-      });
-    }
+if (!productos?.length) {
+  return res.status(400).json({
+    message: "Carrito vacío",
+  });
+}
 
-    /* =========================
-       RECONSTRUIR ITEMS DESDE DB (IMPORTANTE)
-    ========================= */
-    const items = [];
+/* =========================
+   RECONSTRUIR ITEMS DESDE DB (IMPORTANTE)
+========================= *//*
+const items = [];
 
-    for (const p of productos) {
-      const product = await Product.findById(p.productId);
+for (const p of productos) {
+  const product = await Product.findById(p.productId);
 
-      if (!product) continue;
+  if (!product) continue;
 
-      const price =
-        product.pricing?.sale || product.pricing?.list;
+  const price =
+    product.pricing?.sale || product.pricing?.list;
 
-      const qty = p.qty || 1;
+  const qty = p.qty || 1;
 
-      items.push({
-        productId: product._id,
-        title: product.title,
-        sku: product.sku,
-        price,
-        qty,
-        subtotal: price * qty,
-      });
-    }
+  items.push({
+    productId: product._id,
+    title: product.title,
+    sku: product.sku,
+    price,
+    qty,
+    subtotal: price * qty,
+  });
+}
 
-    const subtotal = items.reduce(
-      (acc, i) => acc + i.subtotal,
-      0
-    );
+const subtotal = items.reduce(
+  (acc, i) => acc + i.subtotal,
+  0
+);
 
-    const shippingCost =
-      deliveryType === "delivery" ? shipping : 0;
+const shippingCost =
+  deliveryType === "delivery" ? shipping : 0;
 
-    const grandTotal = subtotal + shippingCost;
+const grandTotal = subtotal + shippingCost;
 
-    /* =========================
-       CREAR WEB ORDER
-    ========================= */
-    const orderNumber = crypto
-      .randomBytes(6)
-      .toString("hex")
-      .toUpperCase();
+/* =========================
+   CREAR WEB ORDER
+========================= *//*
+const orderNumber = crypto
+  .randomBytes(6)
+  .toString("hex")
+  .toUpperCase();
 
-    const webOrder = await WebOrder.create({
-      orderNumber,
-      customer,
-      deliveryType,
-      shippingCost,
-      items,
-      totals: {
-        subtotal,
-        shipping: shippingCost,
-        total: grandTotal,
-      },
-    });
+const webOrder = await WebOrder.create({
+  orderNumber,
+  customer,
+  deliveryType,
+  shippingCost,
+  items,
+  totals: {
+    subtotal,
+    shipping: shippingCost,
+    total: grandTotal,
+  },
+});
 
-    /* =========================
-       CREAR PREFERENCIA MP
-    ========================= */
-    const response = await preference.create({
-      body: {
-        items: [
-          ...items.map((i) => ({
-            title: i.title,
-            quantity: i.qty,
-            unit_price: i.price,
+/* =========================
+   CREAR PREFERENCIA MP
+========================= *//*
+const response = await preference.create({
+  body: {
+    items: [
+      ...items.map((i) => ({
+        title: i.title,
+        quantity: i.qty,
+        unit_price: i.price,
+        currency_id: "ARS",
+      })),
+      ...(shippingCost > 0
+        ? [
+          {
+            title: "Envío",
+            quantity: 1,
+            unit_price: shippingCost,
             currency_id: "ARS",
-          })),
-          ...(shippingCost > 0
-            ? [
-              {
-                title: "Envío",
-                quantity: 1,
-                unit_price: shippingCost,
-                currency_id: "ARS",
-              },
-            ]
-            : []),
-        ],
+          },
+        ]
+        : []),
+    ],
 
-        metadata: {
-          webOrderId: webOrder._id.toString(),
-        },
+    metadata: {
+      webOrderId: webOrder._id.toString(),
+    },
 
-        payer: {
-          name: customer.name,
-          email: customer.email,
-        },
+    payer: {
+      name: customer.name,
+      email: customer.email,
+    },
 
-        back_urls: {
-          success:
-            "https://tu-frontend.com/pago-exitoso",
-          failure:
-            "https://tu-frontend.com/pago-fallido",
-          pending:
-            "https://tu-frontend.com/pago-pendiente",
-        },
+    back_urls: {
+      success:
+        "https://tu-frontend.com/pago-exitoso",
+      failure:
+        "https://tu-frontend.com/pago-fallido",
+      pending:
+        "https://tu-frontend.com/pago-pendiente",
+    },
 
-        auto_return: "approved",
+    auto_return: "approved",
 
-        notification_url:
-          "https://tu-backend.com/api/payments/webhook",
-      },
-    });
+    notification_url:
+      "https://tu-backend.com/api/payments/webhook",
+  },
+});
 
-    /* =========================
-       GUARDAR preferenceId
-    ========================= */
-    webOrder.payment.preferenceId =
-      response.id;
+/* =========================
+   GUARDAR preferenceId
+========================= *//*
+webOrder.payment.preferenceId =
+  response.id;
 
-    await webOrder.save();
+await webOrder.save();
 
-    return res.json({
-      mpInitPoint: response.init_point,
-      orderId: webOrder._id,
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      message: "Error creando checkout",
-    });
-  }
+return res.json({
+  mpInitPoint: response.init_point,
+  orderId: webOrder._id,
+});
+} catch (error) {
+console.error(error);
+return res.status(500).json({
+  message: "Error creando checkout",
+});
+}
 };
 // ======================================================
 // MERCADO PAGO - CREAR PREFERENCE
-// ======================================================
-
+// ======================================================*/
+/*
 export const createMercadoPagoPreference = async (
   req,
   res
@@ -3633,630 +3633,630 @@ export const createMercadoPagoPreference = async (
 
     /* ==================================================
        DATOS RECIBIDOS
-    ================================================== */
+    ================================================== *//*
 
-    const {
-      items,
-      customer,
-      entrega,
-    } = req.body;
+const {
+  items,
+  customer,
+  entrega,
+} = req.body;
 
-    /* ==================================================
-       VALIDAR ITEMS
-    ================================================== */
+/* ==================================================
+   VALIDAR ITEMS
+================================================== *//*
 
-    if (
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
+if (
+  !Array.isArray(items) ||
+  items.length === 0
+) {
 
-      return res.status(400).json({
+  return res.status(400).json({
 
-        ok: false,
+    ok: false,
 
-        message:
-          "El carrito está vacío.",
+    message:
+      "El carrito está vacío.",
 
-      });
+  });
 
-    }
+}
 
-    /* ==================================================
-       VALIDAR CUSTOMER
-    ================================================== */
+/* ==================================================
+   VALIDAR CUSTOMER
+================================================== *//*
 
-    if (!customer) {
+if (!customer) {
 
-      return res.status(400).json({
+  return res.status(400).json({
 
-        ok: false,
+    ok: false,
 
-        message:
-          "Faltan los datos del comprador.",
+    message:
+      "Faltan los datos del comprador.",
 
-      });
+  });
 
-    }
+}
 
-    if (
-      !customer.name ||
-      !customer.surname ||
-      !customer.email ||
-      !customer.phone
-    ) {
+if (
+  !customer.name ||
+  !customer.surname ||
+  !customer.email ||
+  !customer.phone
+) {
 
-      return res.status(400).json({
+  return res.status(400).json({
 
-        ok: false,
+    ok: false,
 
-        message:
-          "Faltan datos obligatorios del comprador.",
+    message:
+      "Faltan datos obligatorios del comprador.",
 
-      });
+  });
 
-    }
+}
 
-    /* ==================================================
-       VALIDAR ENTREGA
-    ================================================== */
+/* ==================================================
+   VALIDAR ENTREGA
+================================================== *//*
 
-    const tipoEntrega =
-      entrega?.tipo === "pickup"
-        ? "pickup"
-        : "delivery";
+const tipoEntrega =
+  entrega?.tipo === "pickup"
+    ? "pickup"
+    : "delivery";
 
-    if (
-      tipoEntrega === "delivery" &&
-      !entrega?.direccion
-    ) {
+if (
+  tipoEntrega === "delivery" &&
+  !entrega?.direccion
+) {
 
-      return res.status(400).json({
+  return res.status(400).json({
 
-        ok: false,
+    ok: false,
 
-        message:
-          "Falta la dirección de entrega.",
+    message:
+      "Falta la dirección de entrega.",
 
-      });
+  });
 
-    }
+}
 
-    /* ==================================================
-       OBTENER IDS
-    ================================================== */
+/* ==================================================
+   OBTENER IDS
+================================================== *//*
 
-    const productIds =
-      items
-        .map(
-          (item) =>
-            item.id ||
-            item._id
+const productIds =
+  items
+    .map(
+      (item) =>
+        item.id ||
+        item._id
+    )
+    .filter(Boolean)
+    .map(
+      (id) =>
+        String(id)
+    );
+
+/* ==================================================
+   VALIDAR IDS
+================================================== *//*
+
+if (
+  productIds.length !==
+  items.length
+) {
+
+  return res.status(400).json({
+
+    ok: false,
+
+    message:
+      "Uno o más productos no tienen ID.",
+
+  });
+
+}
+
+/* ==================================================
+   BUSCAR PRODUCTOS
+================================================== *//*
+
+const products =
+  await Product.find({
+
+    _id: {
+      $in: productIds,
+    },
+
+  }).lean();
+
+/* ==================================================
+   VERIFICAR EXISTENCIA
+================================================== *//*
+
+if (
+  products.length !==
+  productIds.length
+) {
+
+  return res.status(404).json({
+
+    ok: false,
+
+    message:
+      "Uno o más productos ya no existen.",
+
+  });
+
+}
+
+/* ==================================================
+   CREAR ITEMS MP
+================================================== *//*
+
+const mpItems = [];
+
+let subtotal = 0;
+
+for (const item of items) {
+
+  const product =
+    products.find(
+      (p) =>
+        String(p._id) ===
+        String(
+          item.id ||
+          item._id
         )
-        .filter(Boolean)
-        .map(
-          (id) =>
-            String(id)
-        );
-
-    /* ==================================================
-       VALIDAR IDS
-    ================================================== */
-
-    if (
-      productIds.length !==
-      items.length
-    ) {
-
-      return res.status(400).json({
-
-        ok: false,
-
-        message:
-          "Uno o más productos no tienen ID.",
-
-      });
-
-    }
-
-    /* ==================================================
-       BUSCAR PRODUCTOS
-    ================================================== */
-
-    const products =
-      await Product.find({
-
-        _id: {
-          $in: productIds,
-        },
-
-      }).lean();
-
-    /* ==================================================
-       VERIFICAR EXISTENCIA
-    ================================================== */
-
-    if (
-      products.length !==
-      productIds.length
-    ) {
-
-      return res.status(404).json({
-
-        ok: false,
-
-        message:
-          "Uno o más productos ya no existen.",
-
-      });
-
-    }
-
-    /* ==================================================
-       CREAR ITEMS MP
-    ================================================== */
-
-    const mpItems = [];
-
-    let subtotal = 0;
-
-    for (const item of items) {
-
-      const product =
-        products.find(
-          (p) =>
-            String(p._id) ===
-            String(
-              item.id ||
-              item._id
-            )
-        );
-
-      if (!product) {
-
-        return res.status(404).json({
-
-          ok: false,
-
-          message:
-            "No se encontró uno de los productos.",
-
-        });
-
-      }
-
-      /* ================================================
-         CANTIDAD
-      ================================================ */
-
-      const quantity =
-        Number(
-          item.quantity
-        );
-
-      if (
-        !Number.isInteger(quantity) ||
-        quantity <= 0
-      ) {
-
-        return res.status(400).json({
-
-          ok: false,
-
-          message:
-            `Cantidad inválida para ${product.title}.`,
-
-        });
-
-      }
-
-      /* ================================================
-         STOCK
-      ================================================ */
-
-      const stock =
-        Number(
-          product
-            ?.variants?.[0]
-            ?.stock || 0
-        );
-
-      if (
-        stock < quantity
-      ) {
-
-        return res.status(400).json({
-
-          ok: false,
-
-          message:
-            `No hay suficiente stock de ${product.title}.`,
-
-          stockDisponible:
-            stock,
-
-          solicitado:
-            quantity,
-
-        });
-
-      }
-
-      /* ================================================
-         PRECIO REAL DB
-      ================================================ */
-
-      const price =
-        product?.pricing?.sale ??
-        product?.pricing?.list ??
-        product?.variants?.[0]?.price ??
-        0;
-
-      const unitPrice =
-        Number(price);
-
-      if (
-        !Number.isFinite(
-          unitPrice
-        ) ||
-        unitPrice <= 0
-      ) {
-
-        return res.status(400).json({
-
-          ok: false,
-
-          message:
-            `El producto ${product.title} no tiene un precio válido.`,
-
-        });
-
-      }
-
-      /* ================================================
-         SUBTOTAL
-      ================================================ */
-
-      const itemSubtotal =
-        unitPrice *
-        quantity;
-
-      subtotal +=
-        itemSubtotal;
-
-      /* ================================================
-         ITEM MERCADO PAGO
-      ================================================ */
-
-      mpItems.push({
-
-        id:
-          String(
-            product._id
-          ),
-
-        title:
-          product.title,
-
-        description:
-          product.description ||
-          product.title,
-
-        quantity:
-          quantity,
-
-        currency_id:
-          "ARS",
-
-        unit_price:
-          unitPrice,
-
-      });
-
-    }
-
-    /* ==================================================
-       COSTO ENVÍO
-    ================================================== */
-
-    const costoEnvio =
-      tipoEntrega === "delivery"
-        ? 1500
-        : 0;
-
-    /* ==================================================
-       AGREGAR ENVÍO COMO ITEM
-    ================================================== */
-
-    if (
-      costoEnvio > 0
-    ) {
-
-      mpItems.push({
-
-        id:
-          "ENVIO-TOKKEN",
-
-        title:
-          "Envío a domicilio",
-
-        description:
-          "Costo de envío",
-
-        quantity:
-          1,
-
-        currency_id:
-          "ARS",
-
-        unit_price:
-          costoEnvio,
-
-      });
-
-    }
-
-    /* ==================================================
-       TOTAL
-    ================================================== */
-
-    const total =
-      subtotal +
-      costoEnvio;
-
-    /* ==================================================
-       MERCADO PAGO TOKEN
-    ================================================== */
-
-    if (
-      !process.env.MP_ACCESS_TOKEN
-    ) {
-
-      return res.status(500).json({
-
-        ok: false,
-
-        message:
-          "MP_ACCESS_TOKEN no está configurado en el servidor.",
-
-      });
-
-    }
-
-    /* ==================================================
-       CLIENTE MERCADO PAGO
-    ================================================== */
-
-    const client =
-      new MercadoPagoConfig({
-
-        accessToken:
-          process.env.MP_ACCESS_TOKEN,
-
-      });
-
-    /* ==================================================
-       PREFERENCE
-    ================================================== */
-
-    const preference =
-      new Preference(
-        client
-      );
-
-    /* ==================================================
-       REFERENCIA
-    ================================================== */
-
-    const externalReference =
-      `TOKKEN-${Date.now()}`;
-
-    /* ==================================================
-       URLS
-    ================================================== */
-
-    const frontendUrl =
-      process.env.FRONTEND_URL ||
-      "https://tokkencba.com";
-
-    /* ==================================================
-       CREAR PREFERENCE
-    ================================================== */
-
-    const response =
-      await preference.create({
-
-        body: {
-
-          items:
-            mpItems,
-
-          payer: {
-
-            name:
-              String(
-                customer.name
-              ),
-
-            surname:
-              String(
-                customer.surname
-              ),
-
-            email:
-              String(
-                customer.email
-              ),
-
-            phone: {
-
-              number:
-                String(
-                  customer.phone
-                ),
-
-            },
-
-          },
-
-          back_urls: {
-
-            success:
-              `${frontendUrl}/pago/exito`,
-
-            failure:
-              `${frontendUrl}/pago/error`,
-
-            pending:
-              `${frontendUrl}/pago/pendiente`,
-
-          },
-
-          auto_return:
-            "approved",
-
-          external_reference:
-            externalReference,
-
-          metadata: {
-
-            customer_name:
-              customer.name,
-
-            customer_surname:
-              customer.surname,
-
-            customer_email:
-              customer.email,
-
-            customer_phone:
-              customer.phone,
-
-            delivery_type:
-              tipoEntrega,
-
-            address:
-              entrega?.direccion ||
-              "",
-
-            city:
-              entrega?.ciudad ||
-              "",
-
-            postal_code:
-              entrega?.codigoPostal ||
-              "",
-
-            notes:
-              entrega?.notas ||
-              "",
-
-            subtotal:
-              subtotal,
-
-            shipping:
-              costoEnvio,
-
-            total:
-              total,
-
-          },
-
-        },
-
-      });
-
-    /* ==================================================
-       LOG
-    ================================================== */
-
-    console.log(
-      "===================================="
     );
 
-    console.log(
-      "✅ PREFERENCE MERCADO PAGO CREADA"
-    );
+  if (!product) {
 
-    console.log(
-      "ID:",
-      response.id
-    );
-
-    console.log(
-      "REFERENCE:",
-      externalReference
-    );
-
-    console.log(
-      "SUBTOTAL:",
-      subtotal
-    );
-
-    console.log(
-      "ENVÍO:",
-      costoEnvio
-    );
-
-    console.log(
-      "TOTAL:",
-      total
-    );
-
-    console.log(
-      "===================================="
-    );
-
-    /* ==================================================
-       RESPUESTA
-    ================================================== */
-
-    return res.status(201).json({
-
-      ok: true,
-
-      preferenceId:
-        response.id,
-
-      initPoint:
-        response.init_point,
-
-      sandboxInitPoint:
-        response.sandbox_init_point,
-
-      externalReference,
-
-      subtotal,
-
-      shipping:
-        costoEnvio,
-
-      total,
-
-    });
-
-  } catch (error) {
-
-    console.error(
-      "❌ ERROR CREANDO PREFERENCE MP:",
-      error
-    );
-
-    return res.status(500).json({
+    return res.status(404).json({
 
       ok: false,
 
       message:
-        "No se pudo crear el pago.",
-
-      error:
-        error?.message ||
-        "Error desconocido.",
+        "No se encontró uno de los productos.",
 
     });
 
   }
 
-};
+  /* ================================================
+     CANTIDAD
+  ================================================ *//*
+
+const quantity =
+  Number(
+    item.quantity
+  );
+
+if (
+  !Number.isInteger(quantity) ||
+  quantity <= 0
+) {
+
+  return res.status(400).json({
+
+    ok: false,
+
+    message:
+      `Cantidad inválida para ${product.title}.`,
+
+  });
+
+}
+
+/* ================================================
+   STOCK
+================================================ *//*
+
+const stock =
+  Number(
+    product
+      ?.variants?.[0]
+      ?.stock || 0
+  );
+
+if (
+  stock < quantity
+) {
+
+  return res.status(400).json({
+
+    ok: false,
+
+    message:
+      `No hay suficiente stock de ${product.title}.`,
+
+    stockDisponible:
+      stock,
+
+    solicitado:
+      quantity,
+
+  });
+
+}
+
+/* ================================================
+   PRECIO REAL DB
+================================================ *//*
+
+const price =
+  product?.pricing?.sale ??
+  product?.pricing?.list ??
+  product?.variants?.[0]?.price ??
+  0;
+
+const unitPrice =
+  Number(price);
+
+if (
+  !Number.isFinite(
+    unitPrice
+  ) ||
+  unitPrice <= 0
+) {
+
+  return res.status(400).json({
+
+    ok: false,
+
+    message:
+      `El producto ${product.title} no tiene un precio válido.`,
+
+  });
+
+}
+
+/* ================================================
+   SUBTOTAL
+================================================ *//*
+
+const itemSubtotal =
+  unitPrice *
+  quantity;
+
+subtotal +=
+  itemSubtotal;
+
+/* ================================================
+   ITEM MERCADO PAGO
+================================================ *//*
+
+mpItems.push({
+
+  id:
+    String(
+      product._id
+    ),
+
+  title:
+    product.title,
+
+  description:
+    product.description ||
+    product.title,
+
+  quantity:
+    quantity,
+
+  currency_id:
+    "ARS",
+
+  unit_price:
+    unitPrice,
+
+});
+
+}
+
+/* ==================================================
+ COSTO ENVÍO
+================================================== *//*
+
+const costoEnvio =
+  tipoEntrega === "delivery"
+    ? 1500
+    : 0;
+
+/* ==================================================
+   AGREGAR ENVÍO COMO ITEM
+================================================== *//*
+
+if (
+  costoEnvio > 0
+) {
+
+  mpItems.push({
+
+    id:
+      "ENVIO-TOKKEN",
+
+    title:
+      "Envío a domicilio",
+
+    description:
+      "Costo de envío",
+
+    quantity:
+      1,
+
+    currency_id:
+      "ARS",
+
+    unit_price:
+      costoEnvio,
+
+  });
+
+}
+
+/* ==================================================
+   TOTAL
+================================================== *//*
+
+const total =
+  subtotal +
+  costoEnvio;
+
+/* ==================================================
+   MERCADO PAGO TOKEN
+================================================== *//*
+
+if (
+  !process.env.MP_ACCESS_TOKEN
+) {
+
+  return res.status(500).json({
+
+    ok: false,
+
+    message:
+      "MP_ACCESS_TOKEN no está configurado en el servidor.",
+
+  });
+
+}
+
+/* ==================================================
+   CLIENTE MERCADO PAGO
+================================================== *//*
+
+const client =
+  new MercadoPagoConfig({
+
+    accessToken:
+      process.env.MP_ACCESS_TOKEN,
+
+  });
+
+/* ==================================================
+   PREFERENCE
+================================================== *//*
+
+const preference =
+  new Preference(
+    client
+  );
+
+/* ==================================================
+   REFERENCIA
+================================================== *//*
+
+const externalReference =
+  `TOKKEN-${Date.now()}`;
+
+/* ==================================================
+   URLS
+================================================== *//*
+
+const frontendUrl =
+  process.env.FRONTEND_URL ||
+  "https://tokkencba.com";
+
+/* ==================================================
+   CREAR PREFERENCE
+================================================== *//*
+
+const response =
+  await preference.create({
+
+    body: {
+
+      items:
+        mpItems,
+
+      payer: {
+
+        name:
+          String(
+            customer.name
+          ),
+
+        surname:
+          String(
+            customer.surname
+          ),
+
+        email:
+          String(
+            customer.email
+          ),
+
+        phone: {
+
+          number:
+            String(
+              customer.phone
+            ),
+
+        },
+
+      },
+
+      back_urls: {
+
+        success:
+          `${frontendUrl}/pago/exito`,
+
+        failure:
+          `${frontendUrl}/pago/error`,
+
+        pending:
+          `${frontendUrl}/pago/pendiente`,
+
+      },
+
+      auto_return:
+        "approved",
+
+      external_reference:
+        externalReference,
+
+      metadata: {
+
+        customer_name:
+          customer.name,
+
+        customer_surname:
+          customer.surname,
+
+        customer_email:
+          customer.email,
+
+        customer_phone:
+          customer.phone,
+
+        delivery_type:
+          tipoEntrega,
+
+        address:
+          entrega?.direccion ||
+          "",
+
+        city:
+          entrega?.ciudad ||
+          "",
+
+        postal_code:
+          entrega?.codigoPostal ||
+          "",
+
+        notes:
+          entrega?.notas ||
+          "",
+
+        subtotal:
+          subtotal,
+
+        shipping:
+          costoEnvio,
+
+        total:
+          total,
+
+      },
+
+    },
+
+  });
+
+/* ==================================================
+   LOG
+================================================== *//*
+
+console.log(
+  "===================================="
+);
+
+console.log(
+  "✅ PREFERENCE MERCADO PAGO CREADA"
+);
+
+console.log(
+  "ID:",
+  response.id
+);
+
+console.log(
+  "REFERENCE:",
+  externalReference
+);
+
+console.log(
+  "SUBTOTAL:",
+  subtotal
+);
+
+console.log(
+  "ENVÍO:",
+  costoEnvio
+);
+
+console.log(
+  "TOTAL:",
+  total
+);
+
+console.log(
+  "===================================="
+);
+
+/* ==================================================
+   RESPUESTA
+================================================== *//*
+
+return res.status(201).json({
+
+  ok: true,
+
+  preferenceId:
+    response.id,
+
+  initPoint:
+    response.init_point,
+
+  sandboxInitPoint:
+    response.sandbox_init_point,
+
+  externalReference,
+
+  subtotal,
+
+  shipping:
+    costoEnvio,
+
+  total,
+
+});
+
+} catch (error) {
+
+console.error(
+  "❌ ERROR CREANDO PREFERENCE MP:",
+  error
+);
+
+return res.status(500).json({
+
+  ok: false,
+
+  message:
+    "No se pudo crear el pago.",
+
+  error:
+    error?.message ||
+    "Error desconocido.",
+
+});
+
+}
+
+};*/
 export const mercadoPagoWebhook = async (req, res) => {
 
   console.log("====================================");
@@ -5388,8 +5388,8 @@ export const createWebOrderMP = async (req, res) => {
       Math.floor(
         Math.random() * 10000
       )
-      .toString()
-      .padStart(4, "0");
+        .toString()
+        .padStart(4, "0");
 
 
     const orderNumber =
@@ -5715,27 +5715,13 @@ export const createWebOrderMP = async (req, res) => {
     console.log("INIT POINT:", response.init_point);
     console.log("====================================");
 
-
     return res.status(201).json({
-
       ok: true,
-
-      orderId:
-        webOrder._id,
-
+      orderId: webOrder._id,
       orderNumber,
-
-      preferenceId:
-        response.id,
-
-      initPoint:
-        response.init_point,
-
-      sandboxInitPoint:
-        response.sandbox_init_point,
-
+      preferenceId: response.id,
+      initPoint: response.init_point,
       externalReference,
-
     });
 
 
