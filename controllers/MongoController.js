@@ -3489,12 +3489,12 @@ export const getPersonalReport = async (
 
     /* =========================
        VALIDACIÓN BÁSICA
-    ========================= */
+    ========================= *//*
 if (!productos?.length) {
   return res.status(400).json({
     message: "Carrito vacío",
   });
-}
+}*/
 
 /* =========================
    RECONSTRUIR ITEMS DESDE DB (IMPORTANTE)
@@ -3554,7 +3554,8 @@ const webOrder = await WebOrder.create({
 
 /* =========================
    CREAR PREFERENCIA MP
-========================= *//*
+========================= */
+/*
 const response = await preference.create({
   body: {
     items: [
@@ -4955,7 +4956,6 @@ export const createWebOrderMP = async (req, res) => {
       });
 
     }
-
     const nombre = String(customer.name || "").trim();
     const apellido = String(customer.surname || "").trim();
     const email = String(customer.email || "").trim().toLowerCase();
