@@ -33,8 +33,10 @@ import {
   listOrders,
   getOrderById,
   downloadOrderPDF,
+  downloadWebOrderPDF,
   deleteOrder,
   obtenerWebOrder,
+  obtenerWebOrderByReference,
 
   /* =====================================================
      MERCADO PAGO
@@ -160,24 +162,8 @@ router.get(
 
 
 /* =====================================================
-   ÓRDENES WEB + MERCADO PAGO
+   CREAR ORDEN WEB + MERCADO PAGO
 ===================================================== */
-
-/*
-   Crea:
-
-   1. WebOrder
-   2. externalReference
-   3. Preference Mercado Pago
-
-   Devuelve:
-
-   - orderId
-   - orderNumber
-   - preferenceId
-   - initPoint
-   - sandboxInitPoint
-*/
 
 router.post(
   "/orders/web-mp",
@@ -189,14 +175,39 @@ router.post(
    WEBHOOK MERCADO PAGO
 ===================================================== */
 
-/*
-   Mercado Pago notificará los pagos
-   mediante esta ruta.
-*/
-
 router.post(
   "/orders/web-mp/webhook",
   mercadoPagoWebhook
+);
+
+
+/* =====================================================
+   ORDEN WEB POR ID
+===================================================== */
+
+router.get(
+  "/orders/web/:id",
+  obtenerWebOrder
+);
+
+
+/* =====================================================
+   ORDEN WEB POR EXTERNAL REFERENCE
+===================================================== */
+
+router.get(
+  "/orders/web/reference/:externalReference",
+  obtenerWebOrderByReference
+);
+
+
+/* =====================================================
+   PDF ORDEN WEB
+===================================================== */
+
+router.get(
+  "/orders/web/:id/pdf",
+  downloadWebOrderPDF
 );
 
 
@@ -281,16 +292,6 @@ router.get(
 
 
 /* =====================================================
-   ORDEN WEB INDIVIDUAL
-===================================================== */
-
-router.get(
-  "/orders/web/:id",
-  obtenerWebOrder
-);
-
-
-/* =====================================================
    IMPORTAR PRODUCTOS EXCEL
 ===================================================== */
 
@@ -302,7 +303,7 @@ router.post(
 
 
 /* =====================================================
-   CONTROL PERSONAL
+   PERSONAL
 ===================================================== */
 
 router.post(
@@ -322,7 +323,7 @@ router.get(
 
 
 /* =====================================================
-   EXPORTAR ROUTER
+   EXPORTAR
 ===================================================== */
 
 export default router;

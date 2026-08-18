@@ -5807,3 +5807,735 @@ export const obtenerWebOrder = async (req, res) => {
   }
 
 };
+export const downloadWebOrderPDF = async (req, res) => {
+
+  try {
+
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "🧾 GENERANDO COMPROBANTE WEB"
+    );
+
+    console.log(
+      "ORDER ID:",
+      req.params.id
+    );
+
+    console.log(
+      "===================================="
+    );
+
+
+    /* =====================================================
+       BUSCAR ORDEN
+    ===================================================== */
+
+    const webOrder =
+      await WebOrder.findById(
+        req.params.id
+      );
+
+
+    if (!webOrder) {
+
+      return res.status(404).json({
+
+        ok: false,
+
+        message:
+          "Orden web no encontrada.",
+
+      });
+
+    }
+
+
+    /* =====================================================
+       SOLO PEDIDOS PAGADOS
+    ===================================================== */
+
+    if (
+      webOrder.status !== "paid"
+    ) {
+
+      return res.status(400).json({
+
+        ok: false,
+
+        message:
+          "El comprobante estará disponible cuando el pago sea aprobado.",
+
+      });
+
+    }
+
+
+    const customer =
+      webOrder.customer || {};
+
+
+    const delivery =
+      webOrder.delivery || {};
+
+
+    const totals =
+      webOrder.totals || {};
+
+
+    const items =
+      Array.isArray(webOrder.items)
+        ? webOrder.items
+        : [];
+
+
+    /* =====================================================
+       HEADERS
+    ===================================================== */
+
+    res.setHeader(
+      "Content-Type",
+      "application/pdf"
+    );
+
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="comprobante-${webOrder.orderNumber}.pdf"`
+    );
+
+
+    /* =====================================================
+       PDF
+    ===================================================== */
+
+    const doc =
+      new PDFDocument({
+        size: "A4",
+        margin: 45,
+      });
+
+
+    doc.pipe(res);
+
+
+    /* =====================================================
+       ENCABEZADO
+    ===================================================== */
+
+    doc
+      .fontSize(25)
+      .font("Helvetica-Bold")
+      .text(
+        "TOKKEN",
+        {
+          align: "center",
+        }
+      );
+
+
+    doc
+      .moveDown(0.3)
+      .fontSize(12)
+      .font("Helvetica")
+      .text(
+        "Comprobante de compra",
+        {
+          align: "center",
+        }
+      );
+
+
+    doc.moveDown(1);
+
+
+    /* =====================================================
+       INFORMACIÓN DEL PEDIDO
+    ===================================================== */
+
+    doc
+      .fontSize(11)
+      .font("Helvetica-Bold")
+      .text(
+        `Pedido: ${webOrder.orderNumber || ""}`
+      );
+
+
+    const fecha =
+      webOrder.paidAt
+        ? new Date(
+            webOrder.paidAt
+          ).toLocaleString("es-AR")
+        : new Date().toLocaleString("es-AR");
+
+
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(
+        `Fecha: ${fecha}`
+      );
+
+
+    doc.text(
+      "Estado: PAGO APROBADO"
+    );
+
+
+    if (
+      webOrder.mercadoPago?.paymentId
+    ) {
+
+      doc.text(
+        `Mercado Pago ID: ${webOrder.mercadoPago.paymentId}`
+      );
+
+    }
+
+
+    doc.moveDown(1);
+
+
+    /* =====================================================
+       CLIENTE
+    ===================================================== */
+
+    doc
+      .fontSize(13)
+      .font("Helvetica-Bold")
+      .text(
+        "Datos del cliente"
+      );
+
+
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(
+        `Nombre: ${
+          customer.name || ""
+        } ${
+          customer.surname || ""
+        }`
+      );
+
+
+    doc.text(
+      `Email: ${
+        customer.email || ""
+      }`
+    );
+
+
+    doc.text(
+      `Teléfono: ${
+        customer.phone || ""
+      }`
+    );
+
+
+    doc.moveDown(1);
+
+
+    /* =====================================================
+       ENTREGA
+    ===================================================== */
+
+    doc
+      .fontSize(13)
+      .font("Helvetica-Bold")
+      .text(
+        "Forma de entrega"
+      );
+
+
+    doc
+      .fontSize(10)
+      .font("Helvetica");
+
+
+    if (
+      delivery.type === "pickup"
+    ) {
+
+      doc.text(
+        "Retiro en el local"
+      );
+
+    } else {
+
+      doc.text(
+        "Envío a domicilio"
+      );
+
+
+      if (delivery.address) {
+
+        doc.text(
+          `Dirección: ${delivery.address}`
+        );
+
+      }
+
+
+      if (delivery.city) {
+
+        doc.text(
+          `Ciudad: ${delivery.city}`
+        );
+
+      }
+
+
+      if (delivery.postalCode) {
+
+        doc.text(
+          `Código postal: ${delivery.postalCode}`
+        );
+
+      }
+
+    }
+
+
+    if (delivery.notes) {
+
+      doc.text(
+        `Notas: ${delivery.notes}`
+      );
+
+    }
+
+
+    doc.moveDown(1);
+
+
+    /* =====================================================
+       PRODUCTOS
+    ===================================================== */
+
+    doc
+      .fontSize(13)
+      .font("Helvetica-Bold")
+      .text(
+        "Productos"
+      );
+
+
+    doc.moveDown(0.5);
+
+
+    doc
+      .fontSize(9)
+      .font("Helvetica-Bold")
+      .text(
+        "Producto",
+        45,
+        doc.y
+      );
+
+
+    doc.text(
+      "Cant.",
+      350,
+      doc.y
+    );
+
+
+    doc.text(
+      "Precio",
+      410,
+      doc.y
+    );
+
+
+    doc.text(
+      "Subtotal",
+      490,
+      doc.y
+    );
+
+
+    doc.moveDown(0.5);
+
+
+    doc
+      .moveTo(45, doc.y)
+      .lineTo(550, doc.y)
+      .stroke();
+
+
+    doc.moveDown(0.5);
+
+
+    /* =====================================================
+       ITEMS
+    ===================================================== */
+
+    for (const item of items) {
+
+      const quantity =
+        Number(
+          item.quantity || 0
+        );
+
+
+      const price =
+        Number(
+          item.price || 0
+        );
+
+
+      const itemSubtotal =
+        Number(
+          item.subtotal ??
+          price * quantity
+        );
+
+
+      const title =
+        String(
+          item.title ||
+          "Producto"
+        );
+
+
+      const y =
+        doc.y;
+
+
+      doc
+        .fontSize(9)
+        .font("Helvetica")
+        .text(
+          title,
+          45,
+          y,
+          {
+            width: 290,
+          }
+        );
+
+
+      doc.text(
+        String(quantity),
+        350,
+        y
+      );
+
+
+      doc.text(
+        `$${price.toLocaleString("es-AR")}`,
+        410,
+        y
+      );
+
+
+      doc.text(
+        `$${itemSubtotal.toLocaleString("es-AR")}`,
+        490,
+        y
+      );
+
+
+      doc.moveDown(1);
+
+
+      if (item.sku) {
+
+        doc
+          .fontSize(7)
+          .fillColor("gray")
+          .text(
+            `SKU: ${item.sku}`,
+            45,
+            doc.y - 8
+          )
+          .fillColor("black");
+
+      }
+
+    }
+
+
+    doc.moveDown(0.5);
+
+
+    doc
+      .moveTo(45, doc.y)
+      .lineTo(550, doc.y)
+      .stroke();
+
+
+    doc.moveDown(1);
+
+
+    /* =====================================================
+       TOTALES
+    ===================================================== */
+
+    const subtotal =
+      Number(
+        totals.subtotal || 0
+      );
+
+
+    const shipping =
+      Number(
+        totals.shipping || 0
+      );
+
+
+    const total =
+      Number(
+        totals.total || 0
+      );
+
+
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(
+        `Subtotal: $${subtotal.toLocaleString("es-AR")}`,
+        {
+          align: "right",
+        }
+      );
+
+
+    doc.text(
+      shipping > 0
+        ? `Envío: $${shipping.toLocaleString("es-AR")}`
+        : "Envío: Gratis",
+      {
+        align: "right",
+      }
+    );
+
+
+    doc.moveDown(0.3);
+
+
+    doc
+      .fontSize(15)
+      .font("Helvetica-Bold")
+      .text(
+        `TOTAL: $${total.toLocaleString("es-AR")}`,
+        {
+          align: "right",
+        }
+      );
+
+
+    doc.moveDown(1.5);
+
+
+    /* =====================================================
+       PAGO
+    ===================================================== */
+
+    doc
+      .fontSize(11)
+      .font("Helvetica-Bold")
+      .text(
+        "Pago"
+      );
+
+
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(
+        "Mercado Pago"
+      );
+
+
+    doc.text(
+      "Estado: APROBADO"
+    );
+
+
+    if (
+      webOrder.mercadoPago?.paymentMethodId
+    ) {
+
+      doc.text(
+        `Método: ${
+          webOrder.mercadoPago.paymentMethodId
+        }`
+      );
+
+    }
+
+
+    if (
+      webOrder.mercadoPago?.paymentId
+    ) {
+
+      doc.text(
+        `ID de pago: ${
+          webOrder.mercadoPago.paymentId
+        }`
+      );
+
+    }
+
+
+    /* =====================================================
+       PIE
+    ===================================================== */
+
+    doc
+      .moveDown(2)
+      .fontSize(9)
+      .font("Helvetica")
+      .fillColor("gray")
+      .text(
+        "Gracias por comprar en TOKKEN.",
+        {
+          align: "center",
+        }
+      );
+
+
+    doc.text(
+      "Este comprobante confirma la compra realizada.",
+      {
+        align: "center",
+      }
+    );
+
+
+    /* =====================================================
+       FINAL
+    ===================================================== */
+
+    doc.end();
+
+
+  } catch (error) {
+
+    console.error(
+      "===================================="
+    );
+
+    console.error(
+      "❌ ERROR GENERANDO PDF WEB:"
+    );
+
+    console.error(
+      error
+    );
+
+    console.error(
+      "===================================="
+    );
+
+
+    if (!res.headersSent) {
+
+      return res.status(500).json({
+
+        ok: false,
+
+        message:
+          "No se pudo generar el comprobante.",
+
+        error:
+          error?.message ||
+          "Error desconocido.",
+
+      });
+
+    }
+
+  }
+
+};   
+export const obtenerWebOrderByReference = async (req, res) => {
+
+  try {
+
+    const externalReference =
+      String(
+        req.params.externalReference || ""
+      ).trim();
+
+
+    if (!externalReference) {
+
+      return res.status(400).json({
+        ok: false,
+        message:
+          "Falta externalReference.",
+      });
+
+    }
+
+
+    console.log(
+      "🔎 BUSCANDO ORDEN POR REFERENCE:",
+      externalReference
+    );
+
+
+    const order =
+      await WebOrder.findOne({
+        externalReference,
+      });
+
+
+    if (!order) {
+
+      console.log(
+        "❌ ORDEN NO ENCONTRADA:",
+        externalReference
+      );
+
+      return res.status(404).json({
+        ok: false,
+        message:
+          "Orden no encontrada.",
+      });
+
+    }
+
+
+    console.log(
+      "✅ ORDEN ENCONTRADA:",
+      order._id
+    );
+
+
+    return res.json({
+
+      ok: true,
+
+      order,
+
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "❌ ERROR BUSCANDO ORDEN POR REFERENCE:",
+      error
+    );
+
+
+    return res.status(500).json({
+
+      ok: false,
+
+      message:
+        "Error buscando la orden.",
+
+    });
+
+  }
+
+};
+
