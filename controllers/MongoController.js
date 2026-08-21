@@ -57,6 +57,149 @@ const preference = new Preference(client);
 // opcional: default global
 dayjs.tz.setDefault(TZ);
 
+const normalizeSKU = (text = "") => {
+  return String(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+/*
+=========================================================
+GENERAR SKU
+=========================================================
+*/
+
+/*const generateSKU = (title = "", brand = "") => {
+  const brandPart = normalizeSKU(brand).slice(0, 8);
+  const titlePart = normalizeSKU(title).slice(0, 20);
+
+  return [brandPart, titlePart]
+    .filter(Boolean)
+    .join("-")
+    .slice(0, 30);
+};
+
+const generateVariantSKU = (
+  productSKU,
+  color,
+  index = 0
+) => {
+
+  const base = normalizeSKU(productSKU);
+
+  const colorPart = normalizeSKU(color);
+
+  if (colorPart) {
+    return `${base}-${colorPart}`;
+  }
+
+  return `${base}-VAR-${index + 1}`;
+};
+
+/*
+=========================================================
+PREPARAR VARIANTES
+=========================================================
+*/
+
+const prepareVariants = (
+  variants = [],
+  productSKU
+) => {
+
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+
+  return variants.map((variant, index) => {
+
+    const color =
+      variant?.options?.color?.trim() || "";
+
+    return {
+      ...variant,
+
+      sku:
+        variant.sku?.trim()
+          ? variant.sku.trim()
+          : generateVariantSKU(
+              productSKU,
+              color,
+              index
+            ),
+
+      options: {
+        ...(variant.options || {}),
+        color
+      },
+
+      stock:
+        Number(variant.stock || 0),
+
+      stockMinimo:
+        Number(variant.stockMinimo || 0),
+
+      stockIdeal:
+        Number(variant.stockIdeal || 0),
+
+      price:
+        variant.price !== undefined &&
+        variant.price !== ""
+          ? Number(variant.price)
+          : undefined
+    };
+
+  });
+};
+
+/*
+=========================================================
+NORMALIZAR IMÁGENES GENERALES
+=========================================================
+*/
+
+const normalizeImages = (
+  images = [],
+  title = ""
+) => {
+
+  if (!Array.isArray(images)) {
+    return [];
+  }
+
+  return images
+    .map(img => {
+
+      if (!img) return null;
+
+      if (typeof img === "string") {
+
+        return {
+          url: img,
+          alt: title,
+          source: "url"
+        };
+
+      }
+
+      if (img.url) {
+
+        return {
+          url: img.url,
+          alt: img.alt || title,
+          source: "url"
+        };
+
+      }
+
+      return img;
+
+    })
+    .filter(Boolean);
+};
 
 // -------------------------
 // Helpers (implementaciones simples — adaptá a tu lógica real si hace falta)
@@ -472,143 +615,6 @@ export const searchProducts = async (req, res) => {
   }
 };
 
-const normalizeSKU = (text = "") => {
-  return String(text)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-};
-
-const generateSKU = (title = "", brand = "") => {
-  const brandPart = normalizeSKU(brand).slice(0, 8);
-  const titlePart = normalizeSKU(title).slice(0, 20);
-
-  return [brandPart, titlePart]
-    .filter(Boolean)
-    .join("-")
-    .slice(0, 30);
-};
-
-const generateVariantSKU = (
-  productSKU,
-  color,
-  index = 0
-) => {
-
-  const base = normalizeSKU(productSKU);
-
-  const colorPart = normalizeSKU(color);
-
-  if (colorPart) {
-    return `${base}-${colorPart}`;
-  }
-
-  return `${base}-VAR-${index + 1}`;
-};
-
-/*
-=========================================================
-PREPARAR VARIANTES
-=========================================================
-*/
-
-const prepareVariants = (
-  variants = [],
-  productSKU
-) => {
-
-  if (!Array.isArray(variants)) {
-    return [];
-  }
-
-  return variants.map((variant, index) => {
-
-    const color =
-      variant?.options?.color?.trim() || "";
-
-    return {
-      ...variant,
-
-      sku:
-        variant.sku?.trim()
-          ? variant.sku.trim()
-          : generateVariantSKU(
-              productSKU,
-              color,
-              index
-            ),
-
-      options: {
-        ...(variant.options || {}),
-        color
-      },
-
-      stock:
-        Number(variant.stock || 0),
-
-      stockMinimo:
-        Number(variant.stockMinimo || 0),
-
-      stockIdeal:
-        Number(variant.stockIdeal || 0),
-
-      price:
-        variant.price !== undefined &&
-        variant.price !== ""
-          ? Number(variant.price)
-          : undefined
-    };
-
-  });
-};
-
-/*
-=========================================================
-NORMALIZAR IMÁGENES GENERALES
-=========================================================
-*/
-
-const normalizeImages = (
-  images = [],
-  title = ""
-) => {
-
-  if (!Array.isArray(images)) {
-    return [];
-  }
-
-  return images
-    .map(img => {
-
-      if (!img) return null;
-
-      if (typeof img === "string") {
-
-        return {
-          url: img,
-          alt: title,
-          source: "url"
-        };
-
-      }
-
-      if (img.url) {
-
-        return {
-          url: img.url,
-          alt: img.alt || title,
-          source: "url"
-        };
-
-      }
-
-      return img;
-
-    })
-    .filter(Boolean);
-};
 
 /*
 =========================================================
