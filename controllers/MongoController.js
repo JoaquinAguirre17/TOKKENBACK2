@@ -472,7 +472,152 @@ export const searchProducts = async (req, res) => {
   }
 };
 
+const normalizeSKU = (text = "") => {
+  return String(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+const generateSKU = (title = "", brand = "") => {
+  const brandPart = normalizeSKU(brand).slice(0, 8);
+  const titlePart = normalizeSKU(title).slice(0, 20);
+
+  return [brandPart, titlePart]
+    .filter(Boolean)
+    .join("-")
+    .slice(0, 30);
+};
+
+const generateVariantSKU = (
+  productSKU,
+  color,
+  index = 0
+) => {
+
+  const base = normalizeSKU(productSKU);
+
+  const colorPart = normalizeSKU(color);
+
+  if (colorPart) {
+    return `${base}-${colorPart}`;
+  }
+
+  return `${base}-VAR-${index + 1}`;
+};
+
+/*
+=========================================================
+PREPARAR VARIANTES
+=========================================================
+*/
+
+const prepareVariants = (
+  variants = [],
+  productSKU
+) => {
+
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+
+  return variants.map((variant, index) => {
+
+    const color =
+      variant?.options?.color?.trim() || "";
+
+    return {
+      ...variant,
+
+      sku:
+        variant.sku?.trim()
+          ? variant.sku.trim()
+          : generateVariantSKU(
+              productSKU,
+              color,
+              index
+            ),
+
+      options: {
+        ...(variant.options || {}),
+        color
+      },
+
+      stock:
+        Number(variant.stock || 0),
+
+      stockMinimo:
+        Number(variant.stockMinimo || 0),
+
+      stockIdeal:
+        Number(variant.stockIdeal || 0),
+
+      price:
+        variant.price !== undefined &&
+        variant.price !== ""
+          ? Number(variant.price)
+          : undefined
+    };
+
+  });
+};
+
+/*
+=========================================================
+NORMALIZAR IMÁGENES GENERALES
+=========================================================
+*/
+
+const normalizeImages = (
+  images = [],
+  title = ""
+) => {
+
+  if (!Array.isArray(images)) {
+    return [];
+  }
+
+  return images
+    .map(img => {
+
+      if (!img) return null;
+
+      if (typeof img === "string") {
+
+        return {
+          url: img,
+          alt: title,
+          source: "url"
+        };
+
+      }
+
+      if (img.url) {
+
+        return {
+          url: img.url,
+          alt: img.alt || title,
+          source: "url"
+        };
+
+      }
+
+      return img;
+
+    })
+    .filter(Boolean);
+};
+
+/*
+=========================================================
+CREATE PRODUCT
+=========================================================
+*/
+
 export const createProduct = async (req, res) => {
+
   try {
 
     const body =
@@ -480,139 +625,199 @@ export const createProduct = async (req, res) => {
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
-    /* =========================
-       VALIDACIONES
-    ========================= */
+    /*
+    ============================
+    VALIDACIONES
+    ============================
+    */
 
     if (!body.title) {
+
       return res.status(400).json({
         error: "title es requerido"
       });
+
     }
 
-    if (!body.pricing?.list) {
+    if (
+      body.pricing?.list === undefined ||
+      body.pricing?.list === null ||
+      body.pricing?.list === ""
+    ) {
+
       return res.status(400).json({
         error: "pricing.list es requerido"
       });
+
     }
 
-    /* =========================
-       SKU AUTOMÁTICO
-    ========================= */
+    /*
+    ============================
+    SKU PRINCIPAL
+    ============================
+    */
 
     if (!body.sku) {
+
       body.sku = generateSKU(
         body.title,
         body.brand
       );
+
     }
 
-    console.log("========== CREATE PRODUCT ==========");
-    console.log("BODY:", body);
-    console.log("FILES:", req.files?.length || 0);
+    /*
+    ============================
+    IMÁGENES GENERALES
+    ============================
+    */
 
-    /* =========================
-       IMÁGENES
-    ========================= */
-
-    let finalImages = [];
-
-    // ----------------------------------
-    // URLs enviadas desde el frontend
-    // ----------------------------------
-
-    if (Array.isArray(body.images)) {
-
-      finalImages.push(
-
-        ...body.images.map(img => {
-
-          // URL como string
-          if (typeof img === "string") {
-
-            return {
-              url: img,
-              alt: body.title,
-              source: "url"
-            };
-
-          }
-
-          // Objeto URL
-          if (img.url) {
-
-            return {
-              url: img.url,
-              alt: img.alt || body.title,
-              source: "url"
-            };
-
-          }
-
-          return img;
-
-        })
-
+    let finalImages =
+      normalizeImages(
+        body.images,
+        body.title
       );
 
-    }
+    /*
+    ============================
+    ARCHIVOS GENERALES
+    ============================
+    */
 
-    // ----------------------------------
-    // Imágenes subidas desde PC/celular
-    // ----------------------------------
+    /*
+    Los archivos generales se identifican
+    mediante imageFiles en el frontend.
 
-    if (req.files?.length) {
+    Por ahora mantenemos el comportamiento
+    existente: todos los archivos que no
+    estén destinados a una variante se
+    agregan como imágenes generales.
+    */
 
-      for (const file of req.files) {
+    const files =
+      Array.isArray(req.files)
+        ? req.files
+        : [];
 
-        console.log("IMAGEN RECIBIDA:", {
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          bufferLength: file.buffer?.length
-        });
+    /*
+    ============================
+    IMÁGENES DE VARIANTES
+    ============================
+    */
 
-        finalImages.push({
+    const variants =
+      prepareVariants(
+        body.variants || [],
+        body.sku
+      );
 
-          alt: body.title,
+    /*
+    variantImageFiles:
+
+    El frontend puede enviar archivos con
+    nombre:
+
+    variantImage_0
+    variantImage_1
+    variantImage_2
+
+    */
+
+    for (
+      let i = 0;
+      i < variants.length;
+      i++
+    ) {
+
+      const fieldName =
+        `variantImage_${i}`;
+
+      const file =
+        files.find(
+          f => f.fieldname === fieldName
+        );
+
+      if (file) {
+
+        variants[i].image = {
+
+          alt:
+            variants[i].options?.color
+              ? `${body.title} ${variants[i].options.color}`
+              : body.title,
 
           source: "mongo",
 
           data: file.buffer,
 
-          contentType: file.mimetype
+          contentType:
+            file.mimetype
 
-        });
+        };
 
       }
+    }
+
+    /*
+    ============================
+    ARCHIVOS GENERALES
+    ============================
+    */
+
+    const generalFiles =
+      files.filter(
+        file =>
+          !file.fieldname?.startsWith(
+            "variantImage_"
+          )
+      );
+
+    for (
+      const file of generalFiles
+    ) {
+
+      finalImages.push({
+
+        alt: body.title,
+
+        source: "mongo",
+
+        data: file.buffer,
+
+        contentType:
+          file.mimetype
+
+      });
 
     }
 
-    body.images = finalImages;
+    /*
+    ============================
+    ASIGNAR DATOS
+    ============================
+    */
 
-    console.log(
-      "IMAGENES FINALES:",
-      body.images.map(img => ({
-        source: img.source,
-        url: img.url || null
-      }))
-    );
+    body.images =
+      finalImages;
 
-    /* =========================
-       CREAR PRODUCTO
-    ========================= */
+    body.variants =
+      variants;
+
+    /*
+    ============================
+    CREAR
+    ============================
+    */
 
     const created =
       await Product.create(body);
 
-    console.log(
-      "PRODUCTO CREADO:",
-      created._id
-    );
-
     return res.status(201).json({
+
       ok: true,
+
       product: created
+
     });
 
   } catch (e) {
@@ -623,16 +828,24 @@ export const createProduct = async (req, res) => {
     );
 
     return res.status(400).json({
+
       error: e.message
+
     });
 
   }
 };
-// ======================================================
-// ACTUALIZAR PRODUCTO
-// ======================================================
 
-export const updateProduct = async (req, res) => {
+/*
+=========================================================
+UPDATE PRODUCT
+=========================================================
+*/
+
+export const updateProduct = async (
+  req,
+  res
+) => {
 
   try {
 
@@ -642,7 +855,9 @@ export const updateProduct = async (req, res) => {
         : { ...req.body };
 
     const product =
-      await Product.findById(req.params.id);
+      await Product.findById(
+        req.params.id
+      );
 
     if (!product) {
 
@@ -652,116 +867,306 @@ export const updateProduct = async (req, res) => {
 
     }
 
-    console.log("========== UPDATE PRODUCT ==========");
-    console.log("PRODUCT ID:", req.params.id);
-    console.log("BODY:", body);
-    console.log("FILES:", req.files?.length || 0);
+    /*
+    ============================
+    SKU PRINCIPAL
+    ============================
+    */
 
-    /* =========================
-       SKU AUTOMÁTICO
-    ========================= */
-
-    if (!body.sku && (body.title || body.brand)) {
-
-      body.sku = generateSKU(
+    const productSKU =
+      body.sku ||
+      product.sku ||
+      generateSKU(
         body.title || product.title,
         body.brand || product.brand
       );
 
-    }
+    body.sku =
+      productSKU;
 
-    /* =========================
-       IMÁGENES
-    ========================= */
+    /*
+    ============================
+    IMÁGENES GENERALES
+    ============================
+    */
 
     let finalImages = [];
 
-    // Si subieron archivos nuevos
-    if (req.files?.length > 0) {
+    if (
+      Array.isArray(body.images)
+    ) {
 
-      console.log(
-        "REEMPLAZANDO IMAGENES:",
-        req.files.length
-      );
-
-      finalImages = req.files.map(file => {
-
-        console.log("GUARDANDO IMAGEN:", {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype
-        });
-
-        return {
-          alt: body.title || product.title,
-          source: "mongo",
-          data: file.buffer,
-          contentType: file.mimetype
-        };
-
-      });
+      finalImages =
+        normalizeImages(
+          body.images,
+          body.title ||
+          product.title
+        );
 
     } else {
 
-      // Si vienen imágenes desde el formulario
-      if (body.images?.length) {
-
-        finalImages = body.images.map(img => {
-
-          // URL como string
-          if (typeof img === "string") {
-
-            return {
-              url: img,
-              alt: body.title || product.title,
-              source: "url"
-            };
-
-          }
-
-          // URL como objeto
-          if (img.url) {
-
-            return {
-              url: img.url,
-              alt: img.alt || body.title || product.title,
-              source: "url"
-            };
-
-          }
-
-          return img;
-
-        });
-
-      } else {
-
-        // Mantener imágenes existentes
-        finalImages = product.images || [];
-
-      }
+      finalImages =
+        product.images || [];
 
     }
 
-    /* =========================
-       ACTUALIZAR PRODUCTO
-    ========================= */
+    /*
+    ============================
+    ARCHIVOS
+    ============================
+    */
+
+    const files =
+      Array.isArray(req.files)
+        ? req.files
+        : [];
+
+    /*
+    ============================
+    IMÁGENES GENERALES NUEVAS
+    ============================
+    */
+
+    const generalFiles =
+      files.filter(
+        file =>
+          !file.fieldname?.startsWith(
+            "variantImage_"
+          )
+      );
+
+    /*
+    IMPORTANTE:
+
+    Mantenemos las imágenes actuales
+    y agregamos las nuevas.
+
+    No reemplazamos todo el array.
+    */
+
+    for (
+      const file of generalFiles
+    ) {
+
+      finalImages.push({
+
+        alt:
+          body.title ||
+          product.title,
+
+        source:
+          "mongo",
+
+        data:
+          file.buffer,
+
+        contentType:
+          file.mimetype
+
+      });
+
+    }
+
+    /*
+    ============================
+    VARIANTES
+    ============================
+    */
+
+    const incomingVariants =
+      prepareVariants(
+        body.variants || [],
+        productSKU
+      );
+
+    /*
+    ============================
+    CONSERVAR IMÁGENES EXISTENTES
+    ============================
+    */
+
+    const oldVariants =
+      product.variants || [];
+
+    const finalVariants =
+      incomingVariants.map(
+        (variant, index) => {
+
+          /*
+          Buscar variante anterior
+          por _id si existe.
+          */
+
+          let oldVariant = null;
+
+          if (variant._id) {
+
+            oldVariant =
+              oldVariants.find(
+                old =>
+                  String(old._id) ===
+                  String(variant._id)
+              );
+
+          }
+
+          /*
+          Si no tiene _id, intentar
+          buscar por SKU.
+          */
+
+          if (
+            !oldVariant &&
+            variant.sku
+          ) {
+
+            oldVariant =
+              oldVariants.find(
+                old =>
+                  old.sku ===
+                  variant.sku
+              );
+
+          }
+
+          /*
+          Imagen nueva
+          */
+
+          const fieldName =
+            `variantImage_${index}`;
+
+          const newFile =
+            files.find(
+              file =>
+                file.fieldname ===
+                fieldName
+            );
+
+          if (newFile) {
+
+            return {
+
+              ...variant,
+
+              image: {
+
+                alt:
+                  variant.options?.color
+                    ? `${body.title || product.title} ${variant.options.color}`
+                    : body.title || product.title,
+
+                source:
+                  "mongo",
+
+                data:
+                  newFile.buffer,
+
+                contentType:
+                  newFile.mimetype
+
+              }
+
+            };
+
+          }
+
+          /*
+          No hay imagen nueva.
+
+          Conservar imagen anterior.
+          */
+
+          if (
+            oldVariant?.image
+          ) {
+
+            return {
+
+              ...variant,
+
+              image:
+                oldVariant.image
+
+            };
+
+          }
+
+          /*
+          Si viene una imagen URL
+          desde frontend, mantenerla.
+          */
+
+          if (
+            variant.image?.url
+          ) {
+
+            return {
+
+              ...variant,
+
+              image: {
+
+                url:
+                  variant.image.url,
+
+                alt:
+                  variant.image.alt ||
+                  (
+                    variant.options?.color
+                      ? `${body.title || product.title} ${variant.options.color}`
+                      : body.title || product.title
+                  ),
+
+                source:
+                  "url"
+
+              }
+
+            };
+
+          }
+
+          /*
+          Sin imagen
+          */
+
+          return {
+
+            ...variant,
+
+            image:
+              variant.image ||
+              null
+
+          };
+
+        }
+      );
+
+    /*
+    ============================
+    GUARDAR
+    ============================
+    */
 
     product.set({
 
       ...body,
 
-      images: finalImages
+      sku:
+        productSKU,
+
+      images:
+        finalImages,
+
+      variants:
+        finalVariants
 
     });
 
     const updated =
       await product.save();
-
-    console.log(
-      "PRODUCTO ACTUALIZADO:",
-      updated._id
-    );
 
     return res.json({
 
@@ -770,7 +1175,8 @@ export const updateProduct = async (req, res) => {
       message:
         "Producto actualizado correctamente",
 
-      product: updated
+      product:
+        updated
 
     });
 
@@ -781,7 +1187,9 @@ export const updateProduct = async (req, res) => {
       error
     );
 
-    if (error instanceof SyntaxError) {
+    if (
+      error instanceof SyntaxError
+    ) {
 
       return res.status(400).json({
 
@@ -792,7 +1200,10 @@ export const updateProduct = async (req, res) => {
 
     }
 
-    if (error.name === "ValidationError") {
+    if (
+      error.name ===
+      "ValidationError"
+    ) {
 
       return res.status(400).json({
 
@@ -817,17 +1228,46 @@ export const updateProduct = async (req, res) => {
     });
 
   }
-
 };
 
+/*
+=========================================================
+DELETE PRODUCT
+=========================================================
+*/
 
-export const deleteProduct = async (req, res) => {
+export const deleteProduct = async (
+  req,
+  res
+) => {
+
   try {
-    const deleted = await Product.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: "Producto no encontrado" });
-    res.json({ ok: true });
+
+    const deleted =
+      await Product.findByIdAndDelete(
+        req.params.id
+      );
+
+    if (!deleted) {
+
+      return res.status(404).json({
+        error:
+          "Producto no encontrado"
+      });
+
+    }
+
+    res.json({
+      ok: true
+    });
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+
+    res.status(500).json({
+      error:
+        e.message
+    });
+
   }
 };
 

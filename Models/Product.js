@@ -1,119 +1,228 @@
 import mongoose from "mongoose";
 
+const variantImageSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      default: ""
+    },
+
+    alt: {
+      type: String,
+      default: ""
+    },
+
+    source: {
+      type: String,
+      enum: ["url", "mongo"],
+      default: "url"
+    },
+
+    data: {
+      type: Buffer
+    },
+
+    contentType: {
+      type: String
+    }
+  },
+  { _id: false }
+);
+
+const variantSchema = new mongoose.Schema(
+  {
+    sku: {
+      type: String,
+      trim: true
+    },
+
+    options: {
+      color: {
+        type: String,
+        trim: true,
+        default: ""
+      }
+    },
+
+    image: {
+      type: variantImageSchema,
+      default: null
+    },
+
+    stock: {
+      type: Number,
+      default: 0
+    },
+
+    stockMinimo: {
+      type: Number,
+      default: 5
+    },
+
+    stockIdeal: {
+      type: Number,
+      default: 10
+    },
+
+    price: {
+      type: Number
+    }
+  },
+  { _id: true }
+);
+
 const productSchema = new mongoose.Schema(
   {
     sku: {
       type: String,
       required: true,
       unique: true,
-      trim: true,
+      trim: true
     },
 
     title: {
       type: String,
       required: true,
-      trim: true,
+      trim: true
     },
 
-    description: String,
+    description: {
+      type: String,
+      default: ""
+    },
 
-    brand: String,
+    brand: {
+      type: String,
+      default: ""
+    },
 
-    category: String,
+    category: {
+      type: String,
+      default: ""
+    },
 
-    tags: [String],
+    tags: {
+      type: [String],
+      default: []
+    },
 
     featured: {
       type: Boolean,
-      default: false,
+      default: false
     },
 
     pricing: {
       currency: {
         type: String,
-        default: "ARS",
+        default: "ARS"
       },
 
       list: {
         type: Number,
-        required: true,
+        required: true
       },
 
-      sale: Number,
+      sale: {
+        type: Number
+      },
 
       taxIncluded: {
         type: Boolean,
-        default: true,
-      },
+        default: true
+      }
     },
+
+    /*
+    =====================================================
+    IMÁGENES GENERALES DEL PRODUCTO
+    =====================================================
+    */
 
     images: [
       {
-        // URL externa (Cloudinary, proveedor, fabricante, etc.)
-        url: String,
+        url: {
+          type: String,
+          default: ""
+        },
 
-        // Texto alternativo
-        alt: String,
+        alt: {
+          type: String,
+          default: ""
+        },
 
-        // Indica dónde está almacenada la imagen
         source: {
           type: String,
           enum: ["url", "mongo"],
-          default: "url",
+          default: "url"
         },
 
-        // Imagen almacenada directamente en MongoDB
-        data: Buffer,
+        data: {
+          type: Buffer
+        },
 
-        // image/jpeg, image/png, image/webp, etc.
-        contentType: String,
-      },
+        contentType: {
+          type: String
+        }
+      }
     ],
 
-    variants: [
+    /*
+    =====================================================
+    VARIANTES
+    =====================================================
+    */
+
+    variants: {
+      type: [variantSchema],
+      default: []
+    },
+
+    /*
+    =====================================================
+    INVENTARIO
+    =====================================================
+    */
+
+    inventory: [
       {
-        sku: {
+        store: {
           type: String,
-          trim: true,
+          default: ""
         },
 
-        options: {
-          color: {
-            type: String,
-            trim: true,
-            default: "",
-          },
-        },
-
-        stock: {
+        qty: {
           type: Number,
-          default: 0,
-        },
-
-        stockMinimo: {
-          type: Number,
-          default: 5,
-        },
-
-        stockIdeal: {
-          type: Number,
-          default: 10,
-        },
-
-        price: {
-          type: Number,
-        },
-      },
+          default: 0
+        }
+      }
     ],
+
+    /*
+    =====================================================
+    SEO
+    =====================================================
+    */
+
+    seo: {
+      metaTitle: {
+        type: String,
+        default: ""
+      },
+
+      metaDesc: {
+        type: String,
+        default: ""
+      }
+    },
 
     status: {
       type: String,
       enum: ["active", "draft", "archived"],
-      default: "active",
-    },
+      default: "active"
+    }
   },
   {
-    timestamps: true,
+    timestamps: true
   }
 );
 
