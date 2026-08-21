@@ -2,29 +2,30 @@ import mongoose from "mongoose";
 
 const variantImageSchema = new mongoose.Schema(
   {
+    source: {
+      type: String,
+      enum: ["url", "mongo"],
+      default: "url",
+    },
+
     url: {
       type: String,
-      default: ""
+      default: "",
+    },
+
+    data: {
+      type: Buffer,
+    },
+
+    contentType: {
+      type: String,
+      default: "",
     },
 
     alt: {
       type: String,
-      default: ""
+      default: "",
     },
-
-    source: {
-      type: String,
-      enum: ["url", "mongo"],
-      default: "url"
-    },
-
-    data: {
-      type: Buffer
-    },
-
-    contentType: {
-      type: String
-    }
   },
   { _id: false }
 );
@@ -33,40 +34,40 @@ const variantSchema = new mongoose.Schema(
   {
     sku: {
       type: String,
-      trim: true
+      trim: true,
     },
 
     options: {
       color: {
         type: String,
         trim: true,
-        default: ""
-      }
+        default: "",
+      },
     },
 
     image: {
       type: variantImageSchema,
-      default: null
+      default: undefined,
     },
 
     stock: {
       type: Number,
-      default: 0
+      default: 0,
     },
 
     stockMinimo: {
       type: Number,
-      default: 5
+      default: 5,
     },
 
     stockIdeal: {
       type: Number,
-      default: 10
+      default: 10,
     },
 
     price: {
-      type: Number
-    }
+      type: Number,
+    },
   },
   { _id: true }
 );
@@ -77,152 +78,149 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      trim: true
+      trim: true,
     },
 
     title: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
+    },
+
+    slug: {
+      type: String,
+      trim: true,
     },
 
     description: {
       type: String,
-      default: ""
+      default: "",
     },
 
     brand: {
       type: String,
-      default: ""
+      default: "",
     },
 
     category: {
       type: String,
-      default: ""
+      default: "",
     },
 
     tags: {
       type: [String],
-      default: []
+      default: [],
     },
 
     featured: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     pricing: {
       currency: {
         type: String,
-        default: "ARS"
+        default: "ARS",
       },
 
       list: {
         type: Number,
-        required: true
+        required: true,
       },
 
       sale: {
-        type: Number
+        type: Number,
       },
 
       taxIncluded: {
         type: Boolean,
-        default: true
-      }
+        default: true,
+      },
     },
 
-    /*
-    =====================================================
-    IMÁGENES GENERALES DEL PRODUCTO
-    =====================================================
-    */
+    // ==========================================
+    // IMÁGENES GENERALES DEL PRODUCTO
+    // ==========================================
 
     images: [
       {
         url: {
           type: String,
-          default: ""
+          default: "",
         },
 
         alt: {
           type: String,
-          default: ""
+          default: "",
         },
 
         source: {
           type: String,
           enum: ["url", "mongo"],
-          default: "url"
+          default: "url",
         },
 
         data: {
-          type: Buffer
+          type: Buffer,
         },
 
         contentType: {
-          type: String
-        }
-      }
+          type: String,
+        },
+      },
     ],
 
-    /*
-    =====================================================
-    VARIANTES
-    =====================================================
-    */
+    // ==========================================
+    // VARIANTES
+    // ==========================================
 
     variants: {
       type: [variantSchema],
-      default: []
+      default: [],
     },
 
-    /*
-    =====================================================
-    INVENTARIO
-    =====================================================
-    */
+    // ==========================================
+    // INVENTARIO
+    // ==========================================
 
     inventory: [
       {
         store: {
           type: String,
-          default: ""
+          default: "",
         },
 
         qty: {
           type: Number,
-          default: 0
-        }
-      }
+          default: 0,
+        },
+      },
     ],
 
-    /*
-    =====================================================
-    SEO
-    =====================================================
-    */
+    // ==========================================
+    // SEO
+    // ==========================================
 
     seo: {
       metaTitle: {
         type: String,
-        default: ""
+        default: "",
       },
 
       metaDesc: {
         type: String,
-        default: ""
-      }
+        default: "",
+      },
     },
 
     status: {
       type: String,
       enum: ["active", "draft", "archived"],
-      default: "active"
-    }
+      default: "active",
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 

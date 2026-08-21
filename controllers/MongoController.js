@@ -617,7 +617,6 @@ CREATE PRODUCT
 */
 
 export const createProduct = async (req, res) => {
-
   try {
 
     const body =
@@ -625,18 +624,14 @@ export const createProduct = async (req, res) => {
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
-    /*
-    ============================
-    VALIDACIONES
-    ============================
-    */
+    /* =========================
+       VALIDACIONES
+    ========================= */
 
     if (!body.title) {
-
       return res.status(400).json({
         error: "title es requerido"
       });
-
     }
 
     if (
@@ -644,180 +639,286 @@ export const createProduct = async (req, res) => {
       body.pricing?.list === null ||
       body.pricing?.list === ""
     ) {
-
       return res.status(400).json({
         error: "pricing.list es requerido"
       });
-
     }
 
-    /*
-    ============================
-    SKU PRINCIPAL
-    ============================
-    */
+    /* =========================
+       SKU PRINCIPAL AUTOMÁTICO
+    ========================= */
 
     if (!body.sku) {
-
       body.sku = generateSKU(
         body.title,
         body.brand
       );
+    }
+
+    console.log(
+      "========== CREATE PRODUCT =========="
+    );
+
+    console.log("BODY:", body);
+
+    console.log(
+      "FILES:",
+      req.files?.length || 0
+    );
+
+    /* =========================
+       IMÁGENES GENERALES
+    ========================= */
+
+    let finalImages = [];
+
+    if (Array.isArray(body.images)) {
+
+      finalImages.push(
+        ...body.images
+          .filter(Boolean)
+          .map(img => {
+
+            // URL como string
+            if (typeof img === "string") {
+
+              return {
+                url: img,
+                alt: body.title,
+                source: "url"
+              };
+
+            }
+
+            // Objeto URL
+            if (img.url) {
+
+              return {
+                url: img.url,
+                alt: img.alt || body.title,
+                source: "url"
+              };
+
+            }
+
+            return img;
+
+          })
+      );
 
     }
 
-    /*
-    ============================
-    IMÁGENES GENERALES
-    ============================
-    */
+    /* =========================
+       VARIANTES
+    ========================= */
 
-    let finalImages =
-      normalizeImages(
-        body.images,
-        body.title
-      );
-
-    /*
-    ============================
-    ARCHIVOS GENERALES
-    ============================
-    */
-
-    /*
-    Los archivos generales se identifican
-    mediante imageFiles en el frontend.
-
-    Por ahora mantenemos el comportamiento
-    existente: todos los archivos que no
-    estén destinados a una variante se
-    agregan como imágenes generales.
-    */
-
-    const files =
-      Array.isArray(req.files)
-        ? req.files
+    let variants =
+      Array.isArray(body.variants)
+        ? body.variants
         : [];
 
-    /*
-    ============================
-    IMÁGENES DE VARIANTES
-    ============================
-    */
+    variants = variants.map(
+      (variant, index) => {
 
-    const variants =
-      prepareVariants(
-        body.variants || [],
-        body.sku
-      );
+        const color =
+          variant.options?.color ||
+          "";
 
-    /*
-    variantImageFiles:
+        /*
+        =====================================
+        SKU AUTOMÁTICO DE VARIANTE
+        =====================================
+        */
 
-    El frontend puede enviar archivos con
-    nombre:
+        let variantSKU =
+          variant.sku;
 
-    variantImage_0
-    variantImage_1
-    variantImage_2
+        if (!variantSKU) {
 
-    */
+          const colorClean =
+            color
+              .toUpperCase()
+              .trim()
+              .replace(/\s+/g, "-")
+              .replace(/[^A-Z0-9-ÁÉÍÓÚÑ]/g, "");
 
-    for (
-      let i = 0;
-      i < variants.length;
-      i++
-    ) {
+          variantSKU =
+            `${body.sku}-${colorClean || `VAR-${index + 1}`}`;
+        }
 
-      const fieldName =
-        `variantImage_${i}`;
+        return {
 
-      const file =
-        files.find(
-          f => f.fieldname === fieldName
-        );
+          ...variant,
 
-      if (file) {
+          sku: variantSKU,
 
-        variants[i].image = {
+          options: {
+            ...(variant.options || {}),
+            color
+          },
 
-          alt:
-            variants[i].options?.color
-              ? `${body.title} ${variants[i].options.color}`
-              : body.title,
+          stock:
+            Number(variant.stock || 0),
 
-          source: "mongo",
+          stockMinimo:
+            Number(variant.stockMinimo || 0),
 
-          data: file.buffer,
-
-          contentType:
-            file.mimetype
+          stockIdeal:
+            Number(variant.stockIdeal || 0)
 
         };
 
       }
-    }
+    );
 
-    /*
-    ============================
-    ARCHIVOS GENERALES
-    ============================
-    */
+    /* =========================
+       ARCHIVOS RECIBIDOS
+    ========================= */
 
-    const generalFiles =
-      files.filter(
-        file =>
-          !file.fieldname?.startsWith(
-            "variantImage_"
+    if (req.files?.length) {
+
+      for (const file of req.files) {
+
+        console.log(
+          "IMAGEN RECIBIDA:",
+          {
+            originalname:
+              file.originalname,
+
+            mimetype:
+              file.mimetype,
+
+            size:
+              file.size
+          }
+        );
+
+        /*
+        ==========================================
+        SI EL ARCHIVO EMPIEZA CON variant_
+        ES UNA IMAGEN DE UNA VARIANTE
+        ==========================================
+        */
+
+        if (
+          file.originalname.startsWith(
+            "variant_"
           )
-      );
+        ) {
 
-    for (
-      const file of generalFiles
-    ) {
+          const match =
+            file.originalname.match(
+              /^variant_(\d+)_/
+            );
 
-      finalImages.push({
+          if (match) {
 
-        alt: body.title,
+            const variantIndex =
+              Number(match[1]);
 
-        source: "mongo",
+            if (
+              variants[variantIndex]
+            ) {
 
-        data: file.buffer,
+              variants[variantIndex].image = {
 
-        contentType:
-          file.mimetype
+                source: "mongo",
 
-      });
+                data: file.buffer,
+
+                contentType:
+                  file.mimetype,
+
+                alt:
+                  `${body.title} ${variants[variantIndex].options?.color || ""}`.trim()
+
+              };
+
+              console.log(
+                "IMAGEN ASIGNADA A VARIANTE:",
+                variantIndex
+              );
+
+            }
+
+          }
+
+        }
+
+        /*
+        ==========================================
+        SI NO ES variant_
+        ES UNA IMAGEN GENERAL
+        ==========================================
+        */
+
+        else {
+
+          finalImages.push({
+
+            alt:
+              body.title,
+
+            source:
+              "mongo",
+
+            data:
+              file.buffer,
+
+            contentType:
+              file.mimetype
+
+          });
+
+        }
+
+      }
 
     }
 
-    /*
-    ============================
-    ASIGNAR DATOS
-    ============================
-    */
+    /* =========================
+       GUARDAR VARIANTES
+    ========================= */
+
+    body.variants = variants;
+
+    /* =========================
+       GUARDAR IMÁGENES
+    ========================= */
 
     body.images =
       finalImages;
 
-    body.variants =
-      variants;
+    console.log(
+      "IMÁGENES GENERALES:",
+      body.images.length
+    );
 
-    /*
-    ============================
-    CREAR
-    ============================
-    */
+    console.log(
+      "VARIANTES:",
+      body.variants.map(v => ({
+        sku: v.sku,
+        color: v.options?.color,
+        imageSource:
+          v.image?.source || null
+      }))
+    );
+
+    /* =========================
+       CREAR PRODUCTO
+    ========================= */
 
     const created =
       await Product.create(body);
 
+    console.log(
+      "PRODUCTO CREADO:",
+      created._id
+    );
+
     return res.status(201).json({
-
       ok: true,
-
       product: created
-
     });
 
   } catch (e) {
@@ -828,9 +929,7 @@ export const createProduct = async (req, res) => {
     );
 
     return res.status(400).json({
-
       error: e.message
-
     });
 
   }
@@ -842,10 +941,7 @@ UPDATE PRODUCT
 =========================================================
 */
 
-export const updateProduct = async (
-  req,
-  res
-) => {
+export const updateProduct = async (req, res) => {
 
   try {
 
@@ -867,306 +963,384 @@ export const updateProduct = async (
 
     }
 
-    /*
-    ============================
-    SKU PRINCIPAL
-    ============================
-    */
+    console.log(
+      "========== UPDATE PRODUCT =========="
+    );
 
-    const productSKU =
-      body.sku ||
-      product.sku ||
-      generateSKU(
-        body.title || product.title,
-        body.brand || product.brand
-      );
+    console.log(
+      "PRODUCT ID:",
+      req.params.id
+    );
 
-    body.sku =
-      productSKU;
+    console.log(
+      "BODY:",
+      body
+    );
 
-    /*
-    ============================
-    IMÁGENES GENERALES
-    ============================
-    */
+    console.log(
+      "FILES:",
+      req.files?.length || 0
+    );
+
+    /* =========================
+       SKU PRINCIPAL
+    ========================= */
+
+    if (
+      !body.sku &&
+      (body.title || body.brand)
+    ) {
+
+      body.sku =
+        generateSKU(
+          body.title ||
+            product.title,
+
+          body.brand ||
+            product.brand
+        );
+
+    }
+
+    /* =========================
+       IMÁGENES GENERALES
+    ========================= */
 
     let finalImages = [];
+
+    /*
+    Si vienen imágenes desde el frontend,
+    conservamos las que tengan URL.
+    */
 
     if (
       Array.isArray(body.images)
     ) {
 
       finalImages =
-        normalizeImages(
-          body.images,
-          body.title ||
-          product.title
-        );
+        body.images
+          .filter(Boolean)
+          .map(img => {
 
-    } else {
+            if (
+              typeof img === "string"
+            ) {
+
+              return {
+
+                url: img,
+
+                alt:
+                  body.title ||
+                  product.title,
+
+                source:
+                  "url"
+
+              };
+
+            }
+
+            if (img.url) {
+
+              return {
+
+                url:
+                  img.url,
+
+                alt:
+                  img.alt ||
+                  body.title ||
+                  product.title,
+
+                source:
+                  "url"
+
+              };
+
+            }
+
+            /*
+            Si viene una imagen Mongo
+            existente, la mantenemos.
+            */
+
+            if (
+              img.source === "mongo"
+            ) {
+
+              return img;
+
+            }
+
+            return img;
+
+          });
+
+    }
+
+    /*
+    Si no se mandaron imágenes generales
+    nuevas, mantenemos las existentes.
+    */
+
+    if (
+      finalImages.length === 0 &&
+      (!req.files ||
+        req.files.length === 0)
+    ) {
 
       finalImages =
         product.images || [];
 
     }
 
-    /*
-    ============================
-    ARCHIVOS
-    ============================
-    */
+    /* =========================
+       VARIANTES
+    ========================= */
 
-    const files =
-      Array.isArray(req.files)
-        ? req.files
+    let variants =
+      Array.isArray(body.variants)
+        ? body.variants
         : [];
 
     /*
-    ============================
-    IMÁGENES GENERALES NUEVAS
-    ============================
-    */
-
-    const generalFiles =
-      files.filter(
-        file =>
-          !file.fieldname?.startsWith(
-            "variantImage_"
-          )
-      );
-
-    /*
-    IMPORTANTE:
-
-    Mantenemos las imágenes actuales
-    y agregamos las nuevas.
-
-    No reemplazamos todo el array.
-    */
-
-    for (
-      const file of generalFiles
-    ) {
-
-      finalImages.push({
-
-        alt:
-          body.title ||
-          product.title,
-
-        source:
-          "mongo",
-
-        data:
-          file.buffer,
-
-        contentType:
-          file.mimetype
-
-      });
-
-    }
-
-    /*
-    ============================
-    VARIANTES
-    ============================
-    */
-
-    const incomingVariants =
-      prepareVariants(
-        body.variants || [],
-        productSKU
-      );
-
-    /*
-    ============================
-    CONSERVAR IMÁGENES EXISTENTES
-    ============================
+    Imágenes anteriores de las variantes
     */
 
     const oldVariants =
       product.variants || [];
 
-    const finalVariants =
-      incomingVariants.map(
+    variants =
+      variants.map(
         (variant, index) => {
 
+          const oldVariant =
+            oldVariants[index];
+
           /*
-          Buscar variante anterior
-          por _id si existe.
+          ----------------------------------
+          SKU AUTOMÁTICO
+          ----------------------------------
           */
 
-          let oldVariant = null;
+          let variantSKU =
+            variant.sku;
 
-          if (variant._id) {
+          if (!variantSKU) {
 
-            oldVariant =
-              oldVariants.find(
-                old =>
-                  String(old._id) ===
-                  String(variant._id)
-              );
+            const color =
+              variant.options?.color ||
+              "";
+
+            const colorClean =
+              color
+                .toUpperCase()
+                .trim()
+                .replace(/\s+/g, "-")
+                .replace(
+                  /[^A-Z0-9-ÁÉÍÓÚÑ]/g,
+                  ""
+                );
+
+            variantSKU =
+              `${body.sku || product.sku}-${colorClean || `VAR-${index + 1}`}`;
 
           }
 
           /*
-          Si no tiene _id, intentar
-          buscar por SKU.
+          ----------------------------------
+          IMAGEN EXISTENTE
+          ----------------------------------
+          */
+
+          let image =
+            variant.image ||
+            oldVariant?.image ||
+            undefined;
+
+          /*
+          Si el frontend indica explícitamente
+          que no tiene imagen.
           */
 
           if (
-            !oldVariant &&
-            variant.sku
+            variant.image === null
           ) {
 
-            oldVariant =
-              oldVariants.find(
-                old =>
-                  old.sku ===
-                  variant.sku
-              );
+            image =
+              undefined;
 
           }
-
-          /*
-          Imagen nueva
-          */
-
-          const fieldName =
-            `variantImage_${index}`;
-
-          const newFile =
-            files.find(
-              file =>
-                file.fieldname ===
-                fieldName
-            );
-
-          if (newFile) {
-
-            return {
-
-              ...variant,
-
-              image: {
-
-                alt:
-                  variant.options?.color
-                    ? `${body.title || product.title} ${variant.options.color}`
-                    : body.title || product.title,
-
-                source:
-                  "mongo",
-
-                data:
-                  newFile.buffer,
-
-                contentType:
-                  newFile.mimetype
-
-              }
-
-            };
-
-          }
-
-          /*
-          No hay imagen nueva.
-
-          Conservar imagen anterior.
-          */
-
-          if (
-            oldVariant?.image
-          ) {
-
-            return {
-
-              ...variant,
-
-              image:
-                oldVariant.image
-
-            };
-
-          }
-
-          /*
-          Si viene una imagen URL
-          desde frontend, mantenerla.
-          */
-
-          if (
-            variant.image?.url
-          ) {
-
-            return {
-
-              ...variant,
-
-              image: {
-
-                url:
-                  variant.image.url,
-
-                alt:
-                  variant.image.alt ||
-                  (
-                    variant.options?.color
-                      ? `${body.title || product.title} ${variant.options.color}`
-                      : body.title || product.title
-                  ),
-
-                source:
-                  "url"
-
-              }
-
-            };
-
-          }
-
-          /*
-          Sin imagen
-          */
 
           return {
 
             ...variant,
 
-            image:
-              variant.image ||
-              null
+            sku:
+              variantSKU,
+
+            options: {
+
+              ...(variant.options || {}),
+
+              color:
+                variant.options?.color ||
+                ""
+
+            },
+
+            image,
+
+            stock:
+              Number(
+                variant.stock || 0
+              ),
+
+            stockMinimo:
+              Number(
+                variant.stockMinimo || 0
+              ),
+
+            stockIdeal:
+              Number(
+                variant.stockIdeal || 0
+              )
 
           };
 
         }
       );
 
-    /*
-    ============================
-    GUARDAR
-    ============================
-    */
+    /* =========================
+       ARCHIVOS NUEVOS
+    ========================= */
+
+    if (
+      req.files?.length
+    ) {
+
+      for (
+        const file of req.files
+      ) {
+
+        console.log(
+          "ARCHIVO:",
+          file.originalname
+        );
+
+        /*
+        ======================================
+        IMAGEN DE VARIANTE
+        ======================================
+        */
+
+        if (
+          file.originalname.startsWith(
+            "variant_"
+          )
+        ) {
+
+          const match =
+            file.originalname.match(
+              /^variant_(\d+)_/
+            );
+
+          if (match) {
+
+            const variantIndex =
+              Number(match[1]);
+
+            if (
+              variants[variantIndex]
+            ) {
+
+              variants[
+                variantIndex
+              ].image = {
+
+                source:
+                  "mongo",
+
+                data:
+                  file.buffer,
+
+                contentType:
+                  file.mimetype,
+
+                alt:
+                  `${body.title || product.title} ${variants[variantIndex].options?.color || ""}`.trim()
+
+              };
+
+              console.log(
+                "IMAGEN DE VARIANTE ACTUALIZADA:",
+                variantIndex
+              );
+
+            }
+
+          }
+
+        }
+
+        /*
+        ======================================
+        IMAGEN GENERAL
+        ======================================
+        */
+
+        else {
+
+          finalImages.push({
+
+            alt:
+              body.title ||
+              product.title,
+
+            source:
+              "mongo",
+
+            data:
+              file.buffer,
+
+            contentType:
+              file.mimetype
+
+          });
+
+        }
+
+      }
+
+    }
+
+    /* =========================
+       ACTUALIZAR PRODUCTO
+    ========================= */
 
     product.set({
 
       ...body,
 
       sku:
-        productSKU,
+        body.sku ||
+        product.sku,
+
+      variants,
 
       images:
-        finalImages,
-
-      variants:
-        finalVariants
+        finalImages
 
     });
 
     const updated =
       await product.save();
+
+    console.log(
+      "PRODUCTO ACTUALIZADO:",
+      updated._id
+    );
 
     return res.json({
 
@@ -1228,8 +1402,8 @@ export const updateProduct = async (
     });
 
   }
-};
 
+};
 /*
 =========================================================
 DELETE PRODUCT
