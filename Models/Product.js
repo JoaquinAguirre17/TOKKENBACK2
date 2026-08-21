@@ -22,7 +22,7 @@ const productSchema = new mongoose.Schema(
     category: String,
 
     tags: [String],
-    
+
     featured: {
       type: Boolean,
       default: false,
@@ -72,7 +72,18 @@ const productSchema = new mongoose.Schema(
 
     variants: [
       {
-        sku: String,
+        sku: {
+          type: String,
+          trim: true,
+        },
+
+        options: {
+          color: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+        },
 
         stock: {
           type: Number,
@@ -89,7 +100,9 @@ const productSchema = new mongoose.Schema(
           default: 10,
         },
 
-        price: Number,
+        price: {
+          type: Number,
+        },
       },
     ],
 
