@@ -1450,7 +1450,6 @@ export const deleteProduct = async (
 
   }
 };
-
 export const createOrder = async (req, res) => {
 
   const session = await mongoose.startSession();
@@ -1469,13 +1468,16 @@ export const createOrder = async (req, res) => {
       descuentoPorcentaje = 0
     } = req.body;
 
-    console.log("VENTA:", req.body);
+    console.log("========== VENTA ==========");
+    console.log("VENTA RECIBIDA:", JSON.stringify(req.body, null, 2));
 
     /* =========================
        VALIDAR PRODUCTOS
     ========================= */
 
     if (!productos?.length) {
+
+      await session.abortTransaction();
 
       return res.status(400).json({
         message: "No hay productos"
@@ -1494,7 +1496,7 @@ export const createOrder = async (req, res) => {
     const productosDb =
       await Product.find({
         _id: { $in: ids }
-      }).lean();
+      }).session(session);
 
     const mapProd = new Map(
       productosDb.map(
@@ -1506,52 +1508,149 @@ export const createOrder = async (req, res) => {
        NORMALIZAR ITEMS
     ========================= */
 
-    const normItems =
-      productos.map(p => {
+    const normItems = [];
 
-        const db =
-          mapProd.get(
-            String(p.productId)
+    for (const p of productos) {
+
+      const db =
+        mapProd.get(
+          String(p.productId)
+        );
+
+      if (!db) {
+
+        throw new Error(
+          `Producto no encontrado: ${p.productId}`
+        );
+
+      }
+
+      /* =========================
+         BUSCAR VARIANTE
+      ========================= */
+
+      let variante = null;
+
+      /*
+       * Si viene variantSku buscamos
+       * específicamente esa variante.
+       */
+
+      if (p.variantSku) {
+
+        variante =
+          db.variants?.find(
+            v =>
+              String(v.sku) ===
+              String(p.variantSku)
           );
 
-        if (!db) {
+      }
 
-          throw new Error(
-            `Producto no encontrado: ${p.productId}`
-          );
+      /*
+       * Compatibilidad con productos
+       * antiguos sin variantes seleccionadas.
+       */
+
+      if (!variante) {
+
+        if (
+          db.variants?.length === 1
+        ) {
+
+          variante =
+            db.variants[0];
 
         }
 
-        const price = Number(
-          p.precio ??
-          db?.pricing?.sale ??
-          db?.pricing?.list ??
-          0
+      }
+
+      /* =========================
+         VALIDAR VARIANTE
+      ========================= */
+
+      if (!variante) {
+
+        throw new Error(
+          `Variante no encontrada para ${db.title}. SKU variante: ${p.variantSku || "no informado"}`
         );
 
-        const qty = Number(
+      }
+
+      /* =========================
+         STOCK
+      ========================= */
+
+      const stockActual =
+        Number(
+          variante.stock ?? 0
+        );
+
+      const qty =
+        Number(
           p.cantidad ?? 1
         );
 
-        return {
+      if (!Number.isInteger(qty) || qty <= 0) {
 
-          productId: db._id,
+        throw new Error(
+          `Cantidad inválida para ${db.title}`
+        );
 
-          title: db.title,
+      }
 
-          sku:
-            db?.variants?.[0]?.sku,
+      if (stockActual < qty) {
 
-          price,
+        throw new Error(
+          `Stock insuficiente de ${db.title} - ${variante.options?.color || "sin color"}. Disponible: ${stockActual}`
+        );
 
-          qty,
+      }
 
-          subtotal:
-            price * qty
+      /* =========================
+         PRECIO
+      ========================= */
 
-        };
+      const price =
+        Number(
+          p.precio ??
+          db?.pricing?.sale ??
+          db?.pricing?.list ??
+          variante?.price ??
+          0
+        );
+
+      /* =========================
+         ITEM NORMALIZADO
+      ========================= */
+
+      normItems.push({
+
+        productId:
+          db._id,
+
+        title:
+          db.title,
+
+        sku:
+          variante.sku,
+
+        variantSku:
+          variante.sku,
+
+        color:
+          variante.options?.color || "",
+
+        price,
+
+        qty,
+
+        subtotal:
+          price * qty
 
       });
+
+    }
 
     /* =========================
        TOTAL PRODUCTOS
@@ -1559,7 +1658,8 @@ export const createOrder = async (req, res) => {
 
     const itemsTotal =
       normItems.reduce(
-        (a, b) => a + b.subtotal,
+        (a, b) =>
+          a + b.subtotal,
         0
       );
 
@@ -1576,7 +1676,7 @@ export const createOrder = async (req, res) => {
       );
 
     /* =========================
-       RECARGO TARJETA CRÉDITO
+       RECARGO TARJETA
     ========================= */
 
     let porcentajeRecargo = 0;
@@ -1610,19 +1710,12 @@ export const createOrder = async (req, res) => {
       );
 
     console.log({
-
       itemsTotal,
-
       descuentoPorcentaje,
-
       subtotal,
-
       porcentajeRecargo,
-
       totalFinal,
-
       totalFrontend: total
-
     });
 
     /* =========================
@@ -1631,8 +1724,10 @@ export const createOrder = async (req, res) => {
 
     if (
       Math.round(totalFinal) !==
-      Math.round(total)
+      Math.round(Number(total))
     ) {
+
+      await session.abortTransaction();
 
       return res.status(400).json({
 
@@ -1665,57 +1760,59 @@ export const createOrder = async (req, res) => {
        CREAR ORDEN
     ========================= */
 
-    const order = new Order({
+    const order =
+      new Order({
 
-      orderNumber,
-
-      items: normItems,
-
-      totals: {
+        orderNumber,
 
         items:
-          itemsTotal,
+          normItems,
 
-        discountPercentage:
-          Number(
-            descuentoPorcentaje
-          ),
+        totals: {
 
-        subtotal,
+          items:
+            itemsTotal,
 
-        grand:
-          totalFinal
+          discountPercentage:
+            Number(
+              descuentoPorcentaje
+            ),
 
-      },
+          subtotal,
 
-      payment: {
+          grand:
+            totalFinal
 
-        method:
-          metodoPago,
+        },
 
-        installments:
-          Number(cuotas),
+        payment: {
 
-        status:
-          "approved",
+          method:
+            metodoPago,
 
-        amount:
-          totalFinal,
+          installments:
+            Number(cuotas),
 
-        paidAt:
+          status:
+            "approved",
+
+          amount:
+            totalFinal,
+
+          paidAt:
+            now
+
+        },
+
+        createdBy:
+          vendedor,
+
+        sessionId,
+
+        createdAt:
           now
 
-      },
-
-      createdBy:
-        vendedor,
-
-      sessionId,
-
-      createdAt:
-        now
-
-    });
+      });
 
     /* =========================
        GUARDAR ORDEN
@@ -1730,21 +1827,146 @@ export const createOrder = async (req, res) => {
       order
     );
 
-    /* =========================
-       DESCONTAR STOCK
-    ========================= */
+    /* =====================================================
+       DESCONTAR STOCK POR VARIANTE
+    ===================================================== */
 
-    await adjustStock(
-      session,
-      normItems,
-      -1
-    );
+    for (const item of normItems) {
+
+      /*
+       * Si tiene SKU de variante,
+       * descontamos específicamente esa variante.
+       */
+
+      if (item.variantSku) {
+
+        const resultado =
+          await Product.updateOne(
+
+            {
+              _id:
+                item.productId,
+
+              variants: {
+                $elemMatch: {
+                  sku:
+                    item.variantSku,
+
+                  stock: {
+                    $gte:
+                      item.qty
+                  }
+                }
+              }
+
+            },
+
+            {
+              $inc: {
+                "variants.$[variant].stock":
+                  -item.qty
+              }
+            },
+
+            {
+              arrayFilters: [
+                {
+                  "variant.sku":
+                    item.variantSku
+                }
+              ],
+
+              session
+
+            }
+
+          );
+
+        /*
+         * Si modifiedCount es 0,
+         * significa que el stock cambió
+         * o la variante no existe.
+         */
+
+        if (
+          resultado.modifiedCount === 0
+        ) {
+
+          throw new Error(
+            `No se pudo descontar stock de ${item.title} - ${item.color} - SKU ${item.variantSku}`
+          );
+
+        }
+
+        console.log(
+          `📦 STOCK DESCONTADO: ${item.title} | Color: ${item.color} | SKU: ${item.variantSku} | Cantidad: ${item.qty}`
+        );
+
+      }
+
+      /*
+       * Compatibilidad con productos
+       * antiguos que no tienen SKU de variante.
+       */
+
+      else {
+
+        const resultado =
+          await Product.updateOne(
+
+            {
+              _id:
+                item.productId,
+
+              "variants.0.stock":
+                {
+                  $gte:
+                    item.qty
+                }
+
+            },
+
+            {
+              $inc: {
+                "variants.0.stock":
+                  -item.qty
+              }
+
+            },
+
+            {
+              session
+            }
+
+          );
+
+        if (
+          resultado.modifiedCount === 0
+        ) {
+
+          throw new Error(
+            `No se pudo descontar stock de ${item.title}`
+          );
+
+        }
+
+        console.log(
+          `📦 STOCK DESCONTADO PRODUCTO ANTIGUO: ${item.title} | Cantidad: ${item.qty}`
+        );
+
+      }
+
+    }
 
     /* =========================
        COMMIT
     ========================= */
 
     await session.commitTransaction();
+
+    console.log(
+      "🟢 TRANSACCIÓN COMPLETADA"
+    );
 
     return res.status(201).json({
 
@@ -1757,16 +1979,39 @@ export const createOrder = async (req, res) => {
 
   } catch (error) {
 
-    await session.abortTransaction();
+    /*
+     * Solo abortamos si la transacción
+     * sigue activa.
+     */
+
+    try {
+
+      if (
+        session.inTransaction()
+      ) {
+
+        await session.abortTransaction();
+
+      }
+
+    } catch (abortError) {
+
+      console.error(
+        "Error abortando transacción:",
+        abortError
+      );
+
+    }
 
     console.error(
       "❌ ERROR CREANDO ORDEN:",
       error
     );
 
-    return res.status(500).json({
+    return res.status(400).json({
 
       message:
+        error.message ||
         "Error al crear orden",
 
       error:
@@ -5550,11 +5795,14 @@ export const createWebOrderMP = async (req, res) => {
     } = req.body;
 
 
-    /* =====================================================
-       VALIDAR ITEMS
-    ===================================================== */
+    // =====================================================
+    // VALIDAR ITEMS
+    // =====================================================
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
 
       return res.status(400).json({
         ok: false,
@@ -5564,37 +5812,62 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       VALIDAR CUSTOMER
-    ===================================================== */
+    // =====================================================
+    // VALIDAR CUSTOMER
+    // =====================================================
 
     if (!customer) {
 
       return res.status(400).json({
         ok: false,
-        message: "Faltan los datos del comprador.",
+        message:
+          "Faltan los datos del comprador.",
       });
 
     }
-    const nombre = String(customer.name || "").trim();
-    const apellido = String(customer.surname || "").trim();
-    const email = String(customer.email || "").trim().toLowerCase();
-    const telefono = String(customer.phone || "").trim();
+
+    const nombre =
+      String(
+        customer.name || ""
+      ).trim();
+
+    const apellido =
+      String(
+        customer.surname || ""
+      ).trim();
+
+    const email =
+      String(
+        customer.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const telefono =
+      String(
+        customer.phone || ""
+      ).trim();
 
 
-    if (!nombre || !apellido || !email || !telefono) {
+    if (
+      !nombre ||
+      !apellido ||
+      !email ||
+      !telefono
+    ) {
 
       return res.status(400).json({
         ok: false,
-        message: "Faltan datos obligatorios del comprador.",
+        message:
+          "Faltan datos obligatorios del comprador.",
       });
 
     }
 
 
-    /* =====================================================
-       VALIDAR EMAIL
-    ===================================================== */
+    // =====================================================
+    // VALIDAR EMAIL
+    // =====================================================
 
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -5603,23 +5876,34 @@ export const createWebOrderMP = async (req, res) => {
 
       return res.status(400).json({
         ok: false,
-        message: "El email ingresado no es válido.",
+        message:
+          "El email ingresado no es válido.",
       });
 
     }
 
 
-    /* =====================================================
-       VALIDAR ENTREGA
-    ===================================================== */
+    // =====================================================
+    // VALIDAR ENTREGA
+    // =====================================================
 
     const deliveryType =
-      String(delivery?.type || "").trim().toLowerCase();
+      String(
+        delivery?.type || ""
+      )
+        .trim()
+        .toLowerCase();
 
 
-    console.log("🚚 DELIVERY RECIBIDO:");
-    console.log(delivery);
-    console.log("🚚 TIPO ENTREGA:", deliveryType);
+    console.log(
+      "🚚 DELIVERY RECIBIDO:",
+      delivery
+    );
+
+    console.log(
+      "🚚 TIPO ENTREGA:",
+      deliveryType
+    );
 
 
     if (
@@ -5629,7 +5913,8 @@ export const createWebOrderMP = async (req, res) => {
 
       return res.status(400).json({
         ok: false,
-        message: "Tipo de entrega inválido.",
+        message:
+          "Tipo de entrega inválido.",
         received:
           delivery?.type || null,
       });
@@ -5637,32 +5922,40 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       DATOS DE ENTREGA
-    ===================================================== */
+    // =====================================================
+    // DATOS DELIVERY
+    // =====================================================
 
     const direccion =
       deliveryType === "delivery"
-        ? String(delivery?.address || "").trim()
+        ? String(
+            delivery?.address || ""
+          ).trim()
         : "";
 
     const ciudad =
       deliveryType === "delivery"
-        ? String(delivery?.city || "").trim()
+        ? String(
+            delivery?.city || ""
+          ).trim()
         : "";
 
     const codigoPostal =
       deliveryType === "delivery"
-        ? String(delivery?.postalCode || "").trim()
+        ? String(
+            delivery?.postalCode || ""
+          ).trim()
         : "";
 
     const notas =
-      String(delivery?.notes || "").trim();
+      String(
+        delivery?.notes || ""
+      ).trim();
 
 
-    /* =====================================================
-       DIRECCIÓN SOLO DELIVERY
-    ===================================================== */
+    // =====================================================
+    // DIRECCIÓN SOLO DELIVERY
+    // =====================================================
 
     if (
       deliveryType === "delivery" &&
@@ -5671,46 +5964,61 @@ export const createWebOrderMP = async (req, res) => {
 
       return res.status(400).json({
         ok: false,
-        message: "La dirección es obligatoria para delivery.",
+        message:
+          "La dirección es obligatoria para delivery.",
       });
 
     }
 
 
-    /* =====================================================
-       OBTENER IDS
-    ===================================================== */
+    // =====================================================
+    // OBTENER IDS DE PRODUCTOS
+    //
+    // IMPORTANTE:
+    // usamos Set porque puede haber:
+    //
+    // PRODUCTO + NEGRO
+    // PRODUCTO + VERDE
+    //
+    // =====================================================
 
-    const productIds = items.map((item) =>
-      String(
-        item.id ||
-        item._id ||
-        ""
-      ).trim()
-    );
+    const productIds = [
+      ...new Set(
+        items.map((item) =>
+          String(
+            item.id ||
+            item._id ||
+            ""
+          ).trim()
+        )
+      ),
+    ];
 
 
     if (
       productIds.some(
-        id => !id
+        (id) => !id
       )
     ) {
 
       return res.status(400).json({
         ok: false,
-        message: "Uno o más productos no tienen ID.",
+        message:
+          "Uno o más productos no tienen ID.",
       });
 
     }
 
 
-    /* =====================================================
-       VALIDAR OBJECT IDS
-    ===================================================== */
+    // =====================================================
+    // VALIDAR OBJECT IDS
+    // =====================================================
 
     for (const id of productIds) {
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (
+        !mongoose.Types.ObjectId.isValid(id)
+      ) {
 
         return res.status(400).json({
           ok: false,
@@ -5723,9 +6031,9 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       BUSCAR PRODUCTOS
-    ===================================================== */
+    // =====================================================
+    // BUSCAR PRODUCTOS
+    // =====================================================
 
     const products =
       await Product.find({
@@ -5736,7 +6044,8 @@ export const createWebOrderMP = async (req, res) => {
 
 
     if (
-      products.length !== productIds.length
+      products.length !==
+      productIds.length
     ) {
 
       return res.status(404).json({
@@ -5748,37 +6057,46 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       MAPA DE PRODUCTOS
-    ===================================================== */
+    // =====================================================
+    // MAPA DE PRODUCTOS
+    // =====================================================
 
     const productMap =
       new Map(
-        products.map(product => [
-          String(product._id),
-          product,
-        ])
+        products.map(
+          (product) => [
+            String(product._id),
+            product,
+          ]
+        )
       );
 
 
-    /* =====================================================
-       NORMALIZAR ITEMS
-    ===================================================== */
+    // =====================================================
+    // NORMALIZAR ITEMS
+    // =====================================================
 
     const normalizedItems = [];
 
 
     for (const item of items) {
 
+      // ===================================================
+      // PRODUCT ID
+      // ===================================================
+
       const productId =
         String(
           item.id ||
-          item._id
-        );
+          item._id ||
+          ""
+        ).trim();
 
 
       const product =
-        productMap.get(productId);
+        productMap.get(
+          productId
+        );
 
 
       if (!product) {
@@ -5792,12 +6110,14 @@ export const createWebOrderMP = async (req, res) => {
       }
 
 
-      /* ===================================================
-         CANTIDAD
-      =================================================== */
+      // ===================================================
+      // CANTIDAD
+      // ===================================================
 
       const quantity =
-        Number(item.quantity);
+        Number(
+          item.quantity
+        );
 
 
       if (
@@ -5814,42 +6134,222 @@ export const createWebOrderMP = async (req, res) => {
       }
 
 
-      /* ===================================================
-         STOCK
-      =================================================== */
+      // ===================================================
+      // BUSCAR VARIANTE
+      // ===================================================
 
-      const stock =
-        Number(
-          product.variants?.[0]?.stock || 0
-        );
+      let selectedVariant = null;
 
 
-      if (stock < quantity) {
+      const variantId =
+        String(
+          item.variantId ||
+          ""
+        ).trim();
+
+
+      const variantSku =
+        String(
+          item.variantSku ||
+          item?.variant?.sku ||
+          ""
+        ).trim();
+
+
+      const requestedColor =
+        String(
+          item.color ||
+          item?.variant?.color ||
+          item?.variant?.options?.color ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      // ===================================================
+      // SI VIENE VARIANT ID
+      // ===================================================
+
+      if (variantId) {
+
+        selectedVariant =
+          product.variants?.find(
+            (variant) => {
+
+              return (
+                String(
+                  variant._id || ""
+                ) === variantId ||
+
+                String(
+                  variant.sku || ""
+                ) === variantId
+              );
+
+            }
+          ) || null;
+
+      }
+
+
+      // ===================================================
+      // SI NO ENCONTRÓ POR ID
+      // BUSCAR POR SKU
+      // ===================================================
+
+      if (
+        !selectedVariant &&
+        variantSku
+      ) {
+
+        selectedVariant =
+          product.variants?.find(
+            (variant) =>
+              String(
+                variant.sku || ""
+              ) === variantSku
+          ) || null;
+
+      }
+
+
+      // ===================================================
+      // SI NO ENCONTRÓ
+      // BUSCAR POR COLOR
+      // ===================================================
+
+      if (
+        !selectedVariant &&
+        requestedColor
+      ) {
+
+        selectedVariant =
+          product.variants?.find(
+            (variant) => {
+
+              const variantColor =
+                String(
+                  variant.color ||
+                  variant.options?.color ||
+                  ""
+                )
+                  .trim()
+                  .toLowerCase();
+
+              return (
+                variantColor ===
+                requestedColor
+              );
+
+            }
+          ) || null;
+
+      }
+
+
+      // ===================================================
+      // SI EL PRODUCTO TIENE VARIANTES,
+      // DEBE HABER UNA VARIANTE VÁLIDA
+      // ===================================================
+
+      if (
+        Array.isArray(
+          product.variants
+        ) &&
+        product.variants.length > 0 &&
+        !selectedVariant
+      ) {
 
         return res.status(400).json({
-
           ok: false,
-
           message:
-            `No hay suficiente stock de ${product.title}.`,
-
-          stockDisponible:
-            stock,
-
-          solicitado:
-            quantity,
-
+            `No se pudo identificar la variante de ${product.title}.`,
         });
 
       }
 
 
-      /* ===================================================
-         PRECIO REAL DE MONGODB
-      =================================================== */
+      // ===================================================
+      // STOCK
+      // =====================================================
+
+      const stock =
+        selectedVariant
+          ? Number(
+              selectedVariant.stock || 0
+            )
+          : Number(
+              product.stock ||
+              product.variants?.[0]?.stock ||
+              0
+            );
+
+
+      console.log(
+        "📦 PRODUCTO:",
+        product.title
+      );
+
+      console.log(
+        "🎨 VARIANTE:",
+        selectedVariant
+          ? {
+              sku:
+                selectedVariant.sku,
+              color:
+                selectedVariant.color ||
+                selectedVariant.options?.color,
+              stock:
+                selectedVariant.stock,
+            }
+          : "SIN VARIANTE"
+      );
+
+      console.log(
+        "📦 STOCK:",
+        stock
+      );
+
+
+      if (
+        stock < quantity
+      ) {
+
+        const color =
+          selectedVariant?.color ||
+          selectedVariant?.options?.color ||
+          item.color ||
+          "";
+
+
+        return res.status(400).json({
+          ok: false,
+          message:
+            `No hay suficiente stock de ${product.title}${
+              color
+                ? ` - ${color}`
+                : ""
+            }.`,
+          stockDisponible:
+            stock,
+          solicitado:
+            quantity,
+        });
+
+      }
+
+
+      // ===================================================
+      // PRECIO
+      //
+      // Primero variante.
+      // Después precio oferta/lista del producto.
+      // ===================================================
 
       let price =
         Number(
+          selectedVariant?.price ??
           product.pricing?.sale ??
           product.pricing?.list ??
           product.variants?.[0]?.price ??
@@ -5877,9 +6377,9 @@ export const createWebOrderMP = async (req, res) => {
         ) / 100;
 
 
-      /* ===================================================
-         SUBTOTAL ITEM
-      =================================================== */
+      // ===================================================
+      // SUBTOTAL ITEM
+      // ===================================================
 
       const itemSubtotal =
         Math.round(
@@ -5888,6 +6388,74 @@ export const createWebOrderMP = async (req, res) => {
           100
         ) / 100;
 
+
+      // ===================================================
+      // IMAGEN DE VARIANTE
+      // ===================================================
+
+      let image = "";
+
+
+      if (
+        selectedVariant?.image
+      ) {
+
+        if (
+          typeof selectedVariant.image ===
+          "string"
+        ) {
+
+          image =
+            selectedVariant.image;
+
+        } else if (
+          selectedVariant.image?.url
+        ) {
+
+          image =
+            selectedVariant.image.url;
+
+        }
+
+      }
+
+
+      // Si no tiene imagen la variante
+      // usamos la primera del producto
+
+      if (!image) {
+
+        image =
+          product.images?.[0]?.url ||
+          "";
+
+      }
+
+
+      // ===================================================
+      // COLOR
+      // ===================================================
+
+      const color =
+        selectedVariant?.color ||
+        selectedVariant?.options?.color ||
+        item.color ||
+        "";
+
+
+      // ===================================================
+      // SKU
+      // ===================================================
+
+      const finalVariantSku =
+        selectedVariant?.sku ||
+        variantSku ||
+        "";
+
+
+      // ===================================================
+      // PUSH ITEM
+      // ===================================================
 
       normalizedItems.push({
 
@@ -5898,7 +6466,7 @@ export const createWebOrderMP = async (req, res) => {
           product.title,
 
         sku:
-          product.variants?.[0]?.sku ||
+          finalVariantSku ||
           product.sku ||
           "",
 
@@ -5909,9 +6477,7 @@ export const createWebOrderMP = async (req, res) => {
         subtotal:
           itemSubtotal,
 
-        image:
-          product.images?.[0]?.url ||
-          "",
+        image,
 
         brand:
           product.brand ||
@@ -5921,8 +6487,22 @@ export const createWebOrderMP = async (req, res) => {
           product.category ||
           "",
 
+        // =============================================
+        // VARIANTE
+        // =============================================
+
         variantId:
-          item.variantId ||
+          selectedVariant?._id ||
+          selectedVariant?.sku ||
+          variantId ||
+          null,
+
+        variantSku:
+          finalVariantSku ||
+          null,
+
+        color:
+          color ||
           null,
 
       });
@@ -5930,23 +6510,26 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       SUBTOTAL
-    ===================================================== */
+    // =====================================================
+    // SUBTOTAL
+    // =====================================================
 
     const subtotal =
       Math.round(
         normalizedItems.reduce(
           (total, item) =>
-            total + item.subtotal,
+            total +
+            Number(
+              item.subtotal || 0
+            ),
           0
         ) * 100
       ) / 100;
 
 
-    /* =====================================================
-       ENVÍO
-    ===================================================== */
+    // =====================================================
+    // ENVÍO
+    // =====================================================
 
     let envio = 0;
 
@@ -5956,7 +6539,9 @@ export const createWebOrderMP = async (req, res) => {
     ) {
 
       envio =
-        Number(shippingCost || 0);
+        Number(
+          shippingCost || 0
+        );
 
     }
 
@@ -5981,25 +6566,38 @@ export const createWebOrderMP = async (req, res) => {
       ) / 100;
 
 
-    /* =====================================================
-       TOTAL
-    ===================================================== */
+    // =====================================================
+    // TOTAL
+    // =====================================================
 
     const total =
       Math.round(
-        (subtotal + envio) * 100
+        (
+          subtotal +
+          envio
+        ) * 100
       ) / 100;
 
 
-    console.log("💰 SUBTOTAL:", subtotal);
-    console.log("🚚 ENVÍO:", envio);
-    console.log("💳 TOTAL:", total);
-    console.log("🚚 TIPO ENTREGA:", deliveryType);
+    console.log(
+      "💰 SUBTOTAL:",
+      subtotal
+    );
+
+    console.log(
+      "🚚 ENVÍO:",
+      envio
+    );
+
+    console.log(
+      "💳 TOTAL:",
+      total
+    );
 
 
-    /* =====================================================
-       GENERAR ORDEN
-    ===================================================== */
+    // =====================================================
+    // GENERAR ORDEN
+    // =====================================================
 
     const timestamp =
       Date.now();
@@ -6020,9 +6618,9 @@ export const createWebOrderMP = async (req, res) => {
       `TOKKEN-WEB-${timestamp}-${random}`;
 
 
-    /* =====================================================
-       CREAR WEB ORDER
-    ===================================================== */
+    // =====================================================
+    // CREAR WEB ORDER
+    // =====================================================
 
     webOrder =
       new WebOrder({
@@ -6101,9 +6699,9 @@ export const createWebOrderMP = async (req, res) => {
     );
 
 
-    /* =====================================================
-       VALIDAR TOKEN MP
-    ===================================================== */
+    // =====================================================
+    // VALIDAR TOKEN MP
+    // =====================================================
 
     if (
       !process.env.MP_ACCESS_TOKEN
@@ -6124,58 +6722,66 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       CLIENTE MERCADO PAGO
-    ===================================================== */
+    // =====================================================
+    // CLIENTE MERCADO PAGO
+    // =====================================================
 
     const mpClient =
       new MercadoPagoConfig({
-
         accessToken:
           process.env.MP_ACCESS_TOKEN,
-
       });
 
 
     const mpPreference =
-      new Preference(mpClient);
+      new Preference(
+        mpClient
+      );
 
 
-    /* =====================================================
-       ITEMS MP
-    ===================================================== */
+    // =====================================================
+    // ITEMS MP
+    // =====================================================
 
     const mpItems =
-      normalizedItems.map(item => ({
+      normalizedItems.map(
+        (item) => ({
 
-        id:
-          String(
-            item.productId
-          ),
+          id:
+            String(
+              item.productId
+            ),
 
-        title:
-          item.title,
+          title:
+            item.color
+              ? `${item.title} - ${item.color}`
+              : item.title,
 
-        description:
-          item.title,
+          description:
+            item.variantSku
+              ? `SKU: ${item.variantSku}`
+              : item.title,
 
-        quantity:
-          item.quantity,
+          quantity:
+            item.quantity,
 
-        currency_id:
-          "ARS",
+          currency_id:
+            "ARS",
 
-        unit_price:
-          item.price,
+          unit_price:
+            item.price,
 
-      }));
+        })
+      );
 
 
-    /* =====================================================
-       ENVÍO MP
-    ===================================================== */
+    // =====================================================
+    // ENVÍO MP
+    // =====================================================
 
-    if (envio > 0) {
+    if (
+      envio > 0
+    ) {
 
       mpItems.push({
 
@@ -6202,35 +6808,37 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       URL BACKEND
-    ===================================================== */
+    // =====================================================
+    // URL BACKEND
+    // =====================================================
 
     const backendUrl =
       (
         process.env.BACKEND_URL ||
         "https://tokkenback2.onrender.com"
-      ).replace(/\/$/, "");
+      )
+        .replace(/\/$/, "");
 
 
     const notificationUrl =
       `${backendUrl}/api/orders/web-mp/webhook`;
 
 
-    /* =====================================================
-       URL FRONTEND
-    ===================================================== */
+    // =====================================================
+    // URL FRONTEND
+    // =====================================================
 
     const frontendUrl =
       (
         process.env.FRONTEND_URL ||
         "https://tokkencba.com"
-      ).replace(/\/$/, "");
+      )
+        .replace(/\/$/, "");
 
 
-    /* =====================================================
-       CREAR PREFERENCE
-    ===================================================== */
+    // =====================================================
+    // CREAR PREFERENCE
+    // =====================================================
 
     console.log(
       "🟡 CREANDO PREFERENCE MERCADO PAGO..."
@@ -6292,9 +6900,9 @@ export const createWebOrderMP = async (req, res) => {
       });
 
 
-    /* =====================================================
-       VALIDAR RESPONSE
-    ===================================================== */
+    // =====================================================
+    // VALIDAR RESPONSE
+    // =====================================================
 
     if (
       !response ||
@@ -6308,12 +6916,13 @@ export const createWebOrderMP = async (req, res) => {
     }
 
 
-    /* =====================================================
-       GUARDAR PREFERENCE
-    ===================================================== */
+    // =====================================================
+    // GUARDAR PREFERENCE
+    // =====================================================
 
     webOrder.mercadoPago =
-      webOrder.mercadoPago || {};
+      webOrder.mercadoPago ||
+      {};
 
 
     webOrder.mercadoPago.preferenceId =
@@ -6323,37 +6932,89 @@ export const createWebOrderMP = async (req, res) => {
     await webOrder.save();
 
 
-    /* =====================================================
-       RESPUESTA
-    ===================================================== */
+    // =====================================================
+    // RESPUESTA
+    // =====================================================
 
-    console.log("====================================");
-    console.log("✅ PREFERENCE CREADA");
-    console.log("ORDER:", orderNumber);
-    console.log("REFERENCE:", externalReference);
-    console.log("PREFERENCE ID:", response.id);
-    console.log("INIT POINT:", response.init_point);
-    console.log("====================================");
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "✅ PREFERENCE CREADA"
+    );
+
+    console.log(
+      "ORDER:",
+      orderNumber
+    );
+
+    console.log(
+      "REFERENCE:",
+      externalReference
+    );
+
+    console.log(
+      "PREFERENCE ID:",
+      response.id
+    );
+
+    console.log(
+      "INIT POINT:",
+      response.init_point
+    );
+
+    console.log(
+      "===================================="
+    );
+
 
     return res.status(201).json({
+
       ok: true,
-      orderId: webOrder._id,
+
+      orderId:
+        webOrder._id,
+
       orderNumber,
-      preferenceId: response.id,
-      initPoint: response.init_point,
+
+      preferenceId:
+        response.id,
+
+      initPoint:
+        response.init_point,
+
       externalReference,
+
     });
 
 
   } catch (error) {
 
-    console.error("====================================");
-    console.error("❌ ERROR CREANDO ORDEN WEB");
-    console.error(error);
-    console.error("====================================");
+    console.error(
+      "===================================="
+    );
+
+    console.error(
+      "❌ ERROR CREANDO ORDEN WEB"
+    );
+
+    console.error(
+      error
+    );
+
+    console.error(
+      "===================================="
+    );
 
 
-    if (webOrder?._id) {
+    // =====================================================
+    // ELIMINAR ORDEN SI FALLÓ
+    // =====================================================
+
+    if (
+      webOrder?._id
+    ) {
 
       try {
 
@@ -6428,88 +7089,44 @@ export const obtenerWebOrder = async (req, res) => {
 
 };
 export const downloadWebOrderPDF = async (req, res) => {
-
   try {
-
-    console.log(
-      "===================================="
-    );
-
-    console.log(
-      "🧾 GENERANDO COMPROBANTE WEB"
-    );
-
-    console.log(
-      "ORDER ID:",
-      req.params.id
-    );
-
-    console.log(
-      "===================================="
-    );
-
+    console.log("====================================");
+    console.log("🧾 GENERANDO COMPROBANTE WEB");
+    console.log("ORDER ID:", req.params.id);
+    console.log("====================================");
 
     /* =====================================================
        BUSCAR ORDEN
     ===================================================== */
 
-    const webOrder =
-      await WebOrder.findById(
-        req.params.id
-      );
-
+    const webOrder = await WebOrder.findById(req.params.id);
 
     if (!webOrder) {
-
       return res.status(404).json({
-
         ok: false,
-
-        message:
-          "Orden web no encontrada.",
-
+        message: "Orden web no encontrada.",
       });
-
     }
-
 
     /* =====================================================
        SOLO PEDIDOS PAGADOS
     ===================================================== */
 
-    if (
-      webOrder.status !== "paid"
-    ) {
-
+    if (webOrder.status !== "paid") {
       return res.status(400).json({
-
         ok: false,
-
         message:
           "El comprobante estará disponible cuando el pago sea aprobado.",
-
       });
-
     }
 
+    const customer = webOrder.customer || {};
+    const delivery = webOrder.delivery || {};
+    const totals = webOrder.totals || {};
 
-    const customer =
-      webOrder.customer || {};
-
-
-    const delivery =
-      webOrder.delivery || {};
-
-
-    const totals =
-      webOrder.totals || {};
-
-
-    const items =
-      Array.isArray(webOrder.items)
-        ? webOrder.items
-        : [];
-
+    const items = Array.isArray(webOrder.items)
+      ? webOrder.items
+      : [];
 
     /* =====================================================
        HEADERS
@@ -6520,26 +7137,21 @@ export const downloadWebOrderPDF = async (req, res) => {
       "application/pdf"
     );
 
-
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="comprobante-${webOrder.orderNumber}.pdf"`
     );
 
-
     /* =====================================================
        PDF
     ===================================================== */
 
-    const doc =
-      new PDFDocument({
-        size: "A4",
-        margin: 45,
-      });
-
+    const doc = new PDFDocument({
+      size: "A4",
+      margin: 45,
+    });
 
     doc.pipe(res);
-
 
     /* =====================================================
        ENCABEZADO
@@ -6548,28 +7160,19 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc
       .fontSize(25)
       .font("Helvetica-Bold")
-      .text(
-        "TOKKEN",
-        {
-          align: "center",
-        }
-      );
-
+      .text("TOKKEN", {
+        align: "center",
+      });
 
     doc
       .moveDown(0.3)
       .fontSize(12)
       .font("Helvetica")
-      .text(
-        "Comprobante de compra",
-        {
-          align: "center",
-        }
-      );
-
+      .text("Comprobante de compra", {
+        align: "center",
+      });
 
     doc.moveDown(1);
-
 
     /* =====================================================
        INFORMACIÓN DEL PEDIDO
@@ -6582,41 +7185,26 @@ export const downloadWebOrderPDF = async (req, res) => {
         `Pedido: ${webOrder.orderNumber || ""}`
       );
 
-
-    const fecha =
-      webOrder.paidAt
-        ? new Date(
-            webOrder.paidAt
-          ).toLocaleString("es-AR")
-        : new Date().toLocaleString("es-AR");
-
+    const fecha = webOrder.paidAt
+      ? new Date(webOrder.paidAt).toLocaleString(
+          "es-AR"
+        )
+      : new Date().toLocaleString("es-AR");
 
     doc
       .fontSize(10)
       .font("Helvetica")
-      .text(
-        `Fecha: ${fecha}`
-      );
+      .text(`Fecha: ${fecha}`);
 
+    doc.text("Estado: PAGO APROBADO");
 
-    doc.text(
-      "Estado: PAGO APROBADO"
-    );
-
-
-    if (
-      webOrder.mercadoPago?.paymentId
-    ) {
-
+    if (webOrder.mercadoPago?.paymentId) {
       doc.text(
         `Mercado Pago ID: ${webOrder.mercadoPago.paymentId}`
       );
-
     }
 
-
     doc.moveDown(1);
-
 
     /* =====================================================
        CLIENTE
@@ -6625,39 +7213,26 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc
       .fontSize(13)
       .font("Helvetica-Bold")
-      .text(
-        "Datos del cliente"
-      );
-
+      .text("Datos del cliente");
 
     doc
       .fontSize(10)
       .font("Helvetica")
       .text(
-        `Nombre: ${
-          customer.name || ""
-        } ${
+        `Nombre: ${customer.name || ""} ${
           customer.surname || ""
         }`
       );
 
-
     doc.text(
-      `Email: ${
-        customer.email || ""
-      }`
+      `Email: ${customer.email || ""}`
     );
 
-
     doc.text(
-      `Teléfono: ${
-        customer.phone || ""
-      }`
+      `Teléfono: ${customer.phone || ""}`
     );
-
 
     doc.moveDown(1);
-
 
     /* =====================================================
        ENTREGA
@@ -6666,71 +7241,43 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc
       .fontSize(13)
       .font("Helvetica-Bold")
-      .text(
-        "Forma de entrega"
-      );
-
+      .text("Forma de entrega");
 
     doc
       .fontSize(10)
       .font("Helvetica");
 
-
-    if (
-      delivery.type === "pickup"
-    ) {
-
-      doc.text(
-        "Retiro en el local"
-      );
-
+    if (delivery.type === "pickup") {
+      doc.text("Retiro en el local");
     } else {
-
-      doc.text(
-        "Envío a domicilio"
-      );
-
+      doc.text("Envío a domicilio");
 
       if (delivery.address) {
-
         doc.text(
           `Dirección: ${delivery.address}`
         );
-
       }
 
-
       if (delivery.city) {
-
         doc.text(
           `Ciudad: ${delivery.city}`
         );
-
       }
 
-
       if (delivery.postalCode) {
-
         doc.text(
           `Código postal: ${delivery.postalCode}`
         );
-
       }
-
     }
 
-
     if (delivery.notes) {
-
       doc.text(
         `Notas: ${delivery.notes}`
       );
-
     }
 
-
     doc.moveDown(1);
-
 
     /* =====================================================
        PRODUCTOS
@@ -6739,96 +7286,60 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc
       .fontSize(13)
       .font("Helvetica-Bold")
-      .text(
-        "Productos"
-      );
-
+      .text("Productos");
 
     doc.moveDown(0.5);
-
 
     doc
       .fontSize(9)
       .font("Helvetica-Bold")
-      .text(
-        "Producto",
-        45,
-        doc.y
-      );
+      .text("Producto", 45, doc.y);
 
-
-    doc.text(
-      "Cant.",
-      350,
-      doc.y
-    );
-
-
-    doc.text(
-      "Precio",
-      410,
-      doc.y
-    );
-
-
-    doc.text(
-      "Subtotal",
-      490,
-      doc.y
-    );
-
+    doc.text("Cant.", 350, doc.y);
+    doc.text("Precio", 410, doc.y);
+    doc.text("Subtotal", 490, doc.y);
 
     doc.moveDown(0.5);
-
 
     doc
       .moveTo(45, doc.y)
       .lineTo(550, doc.y)
       .stroke();
 
-
     doc.moveDown(0.5);
-
 
     /* =====================================================
        ITEMS
     ===================================================== */
 
     for (const item of items) {
+      const quantity = Number(
+        item.quantity || 0
+      );
 
-      const quantity =
-        Number(
-          item.quantity || 0
-        );
+      const price = Number(
+        item.price || 0
+      );
 
-
-      const price =
-        Number(
-          item.price || 0
-        );
-
-
-      const itemSubtotal =
-        Number(
-          item.subtotal ??
+      const itemSubtotal = Number(
+        item.subtotal ??
           price * quantity
-        );
+      );
 
+      const title = String(
+        item.title || "Producto"
+      );
 
-      const title =
-        String(
-          item.title ||
-          "Producto"
-        );
+      const y = doc.y;
 
-
-      const y =
-        doc.y;
-
+      /* ---------------------------------------------
+         PRODUCTO
+      --------------------------------------------- */
 
       doc
         .fontSize(9)
         .font("Helvetica")
+        .fillColor("black")
         .text(
           title,
           45,
@@ -6838,13 +7349,11 @@ export const downloadWebOrderPDF = async (req, res) => {
           }
         );
 
-
       doc.text(
         String(quantity),
         350,
         y
       );
-
 
       doc.text(
         `$${price.toLocaleString("es-AR")}`,
@@ -6852,105 +7361,131 @@ export const downloadWebOrderPDF = async (req, res) => {
         y
       );
 
-
       doc.text(
-        `$${itemSubtotal.toLocaleString("es-AR")}`,
+        `$${itemSubtotal.toLocaleString(
+          "es-AR"
+        )}`,
         490,
         y
       );
 
-
       doc.moveDown(1);
 
+      /* ---------------------------------------------
+         VARIANTE
+      --------------------------------------------- */
+
+      if (
+        item.variantOptions &&
+        typeof item.variantOptions === "object"
+      ) {
+        const opciones = Object.entries(
+          item.variantOptions
+        )
+          .map(
+            ([key, value]) =>
+              `${key}: ${value}`
+          )
+          .join(" | ");
+
+        if (opciones) {
+          doc
+            .fontSize(8)
+            .fillColor("gray")
+            .text(
+              `Variante: ${opciones}`,
+              45,
+              doc.y - 8,
+              {
+                width: 300,
+              }
+            );
+        }
+      }
+
+      /* ---------------------------------------------
+         SKU
+      --------------------------------------------- */
 
       if (item.sku) {
-
         doc
           .fontSize(7)
           .fillColor("gray")
           .text(
             `SKU: ${item.sku}`,
             45,
-            doc.y - 8
-          )
-          .fillColor("black");
-
+            doc.y
+          );
       }
 
+      doc
+        .fillColor("black")
+        .moveDown(0.5);
     }
 
-
     doc.moveDown(0.5);
-
 
     doc
       .moveTo(45, doc.y)
       .lineTo(550, doc.y)
       .stroke();
 
-
     doc.moveDown(1);
-
 
     /* =====================================================
        TOTALES
     ===================================================== */
 
-    const subtotal =
-      Number(
-        totals.subtotal || 0
-      );
+    const subtotal = Number(
+      totals.subtotal || 0
+    );
 
+    const shipping = Number(
+      totals.shipping || 0
+    );
 
-    const shipping =
-      Number(
-        totals.shipping || 0
-      );
-
-
-    const total =
-      Number(
-        totals.total || 0
-      );
-
+    const total = Number(
+      totals.total || 0
+    );
 
     doc
       .fontSize(10)
       .font("Helvetica")
       .text(
-        `Subtotal: $${subtotal.toLocaleString("es-AR")}`,
+        `Subtotal: $${subtotal.toLocaleString(
+          "es-AR"
+        )}`,
         {
           align: "right",
         }
       );
 
-
     doc.text(
       shipping > 0
-        ? `Envío: $${shipping.toLocaleString("es-AR")}`
+        ? `Envío: $${shipping.toLocaleString(
+            "es-AR"
+          )}`
         : "Envío: Gratis",
       {
         align: "right",
       }
     );
 
-
     doc.moveDown(0.3);
-
 
     doc
       .fontSize(15)
       .font("Helvetica-Bold")
       .text(
-        `TOTAL: $${total.toLocaleString("es-AR")}`,
+        `TOTAL: $${total.toLocaleString(
+          "es-AR"
+        )}`,
         {
           align: "right",
         }
       );
 
-
     doc.moveDown(1.5);
-
 
     /* =====================================================
        PAGO
@@ -6959,49 +7494,52 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc
       .fontSize(11)
       .font("Helvetica-Bold")
-      .text(
-        "Pago"
-      );
-
+      .text("Pago");
 
     doc
       .fontSize(10)
       .font("Helvetica")
-      .text(
-        "Mercado Pago"
-      );
+      .text("Mercado Pago");
 
-
-    doc.text(
-      "Estado: APROBADO"
-    );
-
+    doc.text("Estado: APROBADO");
 
     if (
       webOrder.mercadoPago?.paymentMethodId
     ) {
-
       doc.text(
         `Método: ${
           webOrder.mercadoPago.paymentMethodId
         }`
       );
-
     }
-
 
     if (
       webOrder.mercadoPago?.paymentId
     ) {
-
       doc.text(
         `ID de pago: ${
           webOrder.mercadoPago.paymentId
         }`
       );
-
     }
 
+    /* =====================================================
+       REFERENCIA
+    ===================================================== */
+
+    if (webOrder.externalReference) {
+      doc.moveDown(0.5);
+
+      doc
+        .fontSize(8)
+        .fillColor("gray")
+        .text(
+          `Referencia: ${webOrder.externalReference}`,
+          {
+            align: "center",
+          }
+        );
+    }
 
     /* =====================================================
        PIE
@@ -7019,7 +7557,6 @@ export const downloadWebOrderPDF = async (req, res) => {
         }
       );
 
-
     doc.text(
       "Este comprobante confirma la compra realizada.",
       {
@@ -7027,16 +7564,13 @@ export const downloadWebOrderPDF = async (req, res) => {
       }
     );
 
-
     /* =====================================================
        FINAL
     ===================================================== */
 
     doc.end();
 
-
   } catch (error) {
-
     console.error(
       "===================================="
     );
@@ -7045,35 +7579,24 @@ export const downloadWebOrderPDF = async (req, res) => {
       "❌ ERROR GENERANDO PDF WEB:"
     );
 
-    console.error(
-      error
-    );
+    console.error(error);
 
     console.error(
       "===================================="
     );
 
-
     if (!res.headersSent) {
-
       return res.status(500).json({
-
         ok: false,
-
         message:
           "No se pudo generar el comprobante.",
-
         error:
           error?.message ||
           "Error desconocido.",
-
       });
-
     }
-
   }
-
-};   
+};
 export const obtenerWebOrderByReference = async (req, res) => {
 
   try {
