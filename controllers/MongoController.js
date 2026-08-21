@@ -126,10 +126,10 @@ const prepareVariants = (
         variant.sku?.trim()
           ? variant.sku.trim()
           : generateVariantSKU(
-              productSKU,
-              color,
-              index
-            ),
+            productSKU,
+            color,
+            index
+          ),
 
       options: {
         ...(variant.options || {}),
@@ -147,7 +147,7 @@ const prepareVariants = (
 
       price:
         variant.price !== undefined &&
-        variant.price !== ""
+          variant.price !== ""
           ? Number(variant.price)
           : undefined
     };
@@ -1000,10 +1000,10 @@ export const updateProduct = async (req, res) => {
       body.sku =
         generateSKU(
           body.title ||
-            product.title,
+          product.title,
 
           body.brand ||
-            product.brand
+          product.brand
         );
 
     }
@@ -1919,10 +1919,10 @@ export const createOrder = async (req, res) => {
                 item.productId,
 
               "variants.0.stock":
-                {
-                  $gte:
-                    item.qty
-                }
+              {
+                $gte:
+                  item.qty
+              }
 
             },
 
@@ -4356,9 +4356,9 @@ export const getPersonalReport = async (
        VALIDACIÓN BÁSICA
     ========================= *//*
 if (!productos?.length) {
-  return res.status(400).json({
-    message: "Carrito vacío",
-  });
+return res.status(400).json({
+message: "Carrito vacío",
+});
 }*/
 
 /* =========================
@@ -4502,13 +4502,13 @@ export const createMercadoPagoPreference = async (
     ================================================== *//*
 
 const {
-  items,
-  customer,
-  entrega,
+items,
+customer,
+entrega,
 } = req.body;
 
 /* ==================================================
-   VALIDAR ITEMS
+VALIDAR ITEMS
 ================================================== *//*
 
 if (
@@ -4695,28 +4695,28 @@ for (const item of items) {
   ================================================ *//*
 
 const quantity =
-  Number(
-    item.quantity
-  );
+Number(
+  item.quantity
+);
 
 if (
-  !Number.isInteger(quantity) ||
-  quantity <= 0
+!Number.isInteger(quantity) ||
+quantity <= 0
 ) {
 
-  return res.status(400).json({
+return res.status(400).json({
 
-    ok: false,
+  ok: false,
 
-    message:
-      `Cantidad inválida para ${product.title}.`,
+  message:
+    `Cantidad inválida para ${product.title}.`,
 
-  });
+});
 
 }
 
 /* ================================================
-   STOCK
+ STOCK
 ================================================ *//*
 
 const stock =
@@ -5538,6 +5538,12 @@ export const mercadoPagoWebhook = async (req, res) => {
           webOrder.items.map((item) => ({
             productId: item.productId,
 
+            variantId:
+              item.variantId || null,
+
+            variantSku:
+              item.variantSku || null,
+
             qty:
               Number(
                 item.quantity ||
@@ -5545,7 +5551,6 @@ export const mercadoPagoWebhook = async (req, res) => {
                 0
               ),
           }));
-
         console.log(
           "📦 ITEMS PARA STOCK:",
           stockItems
@@ -5794,7 +5799,6 @@ export const createWebOrderMP = async (req, res) => {
       shippingCost = 0,
     } = req.body;
 
-
     // =====================================================
     // VALIDAR ITEMS
     // =====================================================
@@ -5803,51 +5807,36 @@ export const createWebOrderMP = async (req, res) => {
       !Array.isArray(items) ||
       items.length === 0
     ) {
-
       return res.status(400).json({
         ok: false,
         message: "El carrito está vacío.",
       });
-
     }
-
 
     // =====================================================
     // VALIDAR CUSTOMER
     // =====================================================
 
     if (!customer) {
-
       return res.status(400).json({
         ok: false,
-        message:
-          "Faltan los datos del comprador.",
+        message: "Faltan los datos del comprador.",
       });
-
     }
 
     const nombre =
-      String(
-        customer.name || ""
-      ).trim();
+      String(customer.name || "").trim();
 
     const apellido =
-      String(
-        customer.surname || ""
-      ).trim();
+      String(customer.surname || "").trim();
 
     const email =
-      String(
-        customer.email || ""
-      )
+      String(customer.email || "")
         .trim()
         .toLowerCase();
 
     const telefono =
-      String(
-        customer.phone || ""
-      ).trim();
-
+      String(customer.phone || "").trim();
 
     if (
       !nombre ||
@@ -5855,15 +5844,12 @@ export const createWebOrderMP = async (req, res) => {
       !email ||
       !telefono
     ) {
-
       return res.status(400).json({
         ok: false,
         message:
           "Faltan datos obligatorios del comprador.",
       });
-
     }
-
 
     // =====================================================
     // VALIDAR EMAIL
@@ -5873,27 +5859,21 @@ export const createWebOrderMP = async (req, res) => {
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
-
       return res.status(400).json({
         ok: false,
         message:
           "El email ingresado no es válido.",
       });
-
     }
-
 
     // =====================================================
     // VALIDAR ENTREGA
     // =====================================================
 
     const deliveryType =
-      String(
-        delivery?.type || ""
-      )
+      String(delivery?.type || "")
         .trim()
         .toLowerCase();
-
 
     console.log(
       "🚚 DELIVERY RECIBIDO:",
@@ -5905,12 +5885,10 @@ export const createWebOrderMP = async (req, res) => {
       deliveryType
     );
 
-
     if (
       deliveryType !== "pickup" &&
       deliveryType !== "delivery"
     ) {
-
       return res.status(400).json({
         ok: false,
         message:
@@ -5918,33 +5896,31 @@ export const createWebOrderMP = async (req, res) => {
         received:
           delivery?.type || null,
       });
-
     }
 
-
     // =====================================================
-    // DATOS DELIVERY
+    // DATOS ENTREGA
     // =====================================================
 
     const direccion =
       deliveryType === "delivery"
         ? String(
-            delivery?.address || ""
-          ).trim()
+          delivery?.address || ""
+        ).trim()
         : "";
 
     const ciudad =
       deliveryType === "delivery"
         ? String(
-            delivery?.city || ""
-          ).trim()
+          delivery?.city || ""
+        ).trim()
         : "";
 
     const codigoPostal =
       deliveryType === "delivery"
         ? String(
-            delivery?.postalCode || ""
-          ).trim()
+          delivery?.postalCode || ""
+        ).trim()
         : "";
 
     const notas =
@@ -5952,63 +5928,45 @@ export const createWebOrderMP = async (req, res) => {
         delivery?.notes || ""
       ).trim();
 
-
     // =====================================================
-    // DIRECCIÓN SOLO DELIVERY
+    // DIRECCIÓN OBLIGATORIA PARA DELIVERY
     // =====================================================
 
     if (
       deliveryType === "delivery" &&
       !direccion
     ) {
-
       return res.status(400).json({
         ok: false,
         message:
           "La dirección es obligatoria para delivery.",
       });
-
     }
 
-
     // =====================================================
-    // OBTENER IDS DE PRODUCTOS
-    //
-    // IMPORTANTE:
-    // usamos Set porque puede haber:
-    //
-    // PRODUCTO + NEGRO
-    // PRODUCTO + VERDE
-    //
+    // OBTENER IDS
     // =====================================================
 
-    const productIds = [
-      ...new Set(
-        items.map((item) =>
-          String(
-            item.id ||
-            item._id ||
-            ""
-          ).trim()
-        )
-      ),
-    ];
-
+    const productIds = items.map(
+      (item) =>
+        String(
+          item.id ||
+          item._id ||
+          ""
+        ).trim()
+    );
 
     if (
       productIds.some(
         (id) => !id
       )
     ) {
-
       return res.status(400).json({
         ok: false,
         message:
           "Uno o más productos no tienen ID.",
       });
-
     }
-
 
     // =====================================================
     // VALIDAR OBJECT IDS
@@ -6019,17 +5977,13 @@ export const createWebOrderMP = async (req, res) => {
       if (
         !mongoose.Types.ObjectId.isValid(id)
       ) {
-
         return res.status(400).json({
           ok: false,
           message:
             `ID de producto inválido: ${id}`,
         });
-
       }
-
     }
-
 
     // =====================================================
     // BUSCAR PRODUCTOS
@@ -6042,23 +5996,19 @@ export const createWebOrderMP = async (req, res) => {
         },
       }).lean();
 
-
     if (
       products.length !==
-      productIds.length
+      new Set(productIds).size
     ) {
-
       return res.status(404).json({
         ok: false,
         message:
           "Uno o más productos ya no existen.",
       });
-
     }
 
-
     // =====================================================
-    // MAPA DE PRODUCTOS
+    // MAPA PRODUCTOS
     // =====================================================
 
     const productMap =
@@ -6071,238 +6021,258 @@ export const createWebOrderMP = async (req, res) => {
         )
       );
 
-
     // =====================================================
     // NORMALIZAR ITEMS
     // =====================================================
 
     const normalizedItems = [];
 
-
     for (const item of items) {
-
-      // ===================================================
-      // PRODUCT ID
-      // ===================================================
 
       const productId =
         String(
           item.id ||
-          item._id ||
-          ""
+          item._id
         ).trim();
 
-
       const product =
-        productMap.get(
-          productId
-        );
-
+        productMap.get(productId);
 
       if (!product) {
-
         return res.status(404).json({
           ok: false,
           message:
             "Producto no encontrado.",
         });
-
       }
-
-
-      // ===================================================
-      // CANTIDAD
-      // ===================================================
-
-      const quantity =
-        Number(
-          item.quantity
-        );
-
-
-      if (
-        !Number.isInteger(quantity) ||
-        quantity <= 0
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          message:
-            `Cantidad inválida para ${product.title}.`,
-        });
-
-      }
-
-
-      // ===================================================
-      // BUSCAR VARIANTE
-      // ===================================================
-
-      let selectedVariant = null;
-
-
-      const variantId =
-        String(
-          item.variantId ||
-          ""
-        ).trim();
-
-
-      const variantSku =
-        String(
-          item.variantSku ||
-          item?.variant?.sku ||
-          ""
-        ).trim();
-
-
-      const requestedColor =
-        String(
-          item.color ||
-          item?.variant?.color ||
-          item?.variant?.options?.color ||
-          ""
-        )
-          .trim()
-          .toLowerCase();
-
-
-      // ===================================================
-      // SI VIENE VARIANT ID
-      // ===================================================
-
-      if (variantId) {
-
-        selectedVariant =
-          product.variants?.find(
-            (variant) => {
-
-              return (
-                String(
-                  variant._id || ""
-                ) === variantId ||
-
-                String(
-                  variant.sku || ""
-                ) === variantId
-              );
-
-            }
-          ) || null;
-
-      }
-
-
-      // ===================================================
-      // SI NO ENCONTRÓ POR ID
-      // BUSCAR POR SKU
-      // ===================================================
-
-      if (
-        !selectedVariant &&
-        variantSku
-      ) {
-
-        selectedVariant =
-          product.variants?.find(
-            (variant) =>
-              String(
-                variant.sku || ""
-              ) === variantSku
-          ) || null;
-
-      }
-
-
-      // ===================================================
-      // SI NO ENCONTRÓ
-      // BUSCAR POR COLOR
-      // ===================================================
-
-      if (
-        !selectedVariant &&
-        requestedColor
-      ) {
-
-        selectedVariant =
-          product.variants?.find(
-            (variant) => {
-
-              const variantColor =
-                String(
-                  variant.color ||
-                  variant.options?.color ||
-                  ""
-                )
-                  .trim()
-                  .toLowerCase();
-
-              return (
-                variantColor ===
-                requestedColor
-              );
-
-            }
-          ) || null;
-
-      }
-
-
-      // ===================================================
-      // SI EL PRODUCTO TIENE VARIANTES,
-      // DEBE HABER UNA VARIANTE VÁLIDA
-      // ===================================================
-
-      if (
-        Array.isArray(
-          product.variants
-        ) &&
-        product.variants.length > 0 &&
-        !selectedVariant
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          message:
-            `No se pudo identificar la variante de ${product.title}.`,
-        });
-
-      }
-
-
-      // ===================================================
-      // STOCK
-      // =====================================================
-
-      const stock =
-        selectedVariant
-          ? Number(
-              selectedVariant.stock || 0
-            )
-          : Number(
-              product.stock ||
-              product.variants?.[0]?.stock ||
-              0
-            );
-
 
       console.log(
         "📦 PRODUCTO:",
         product.title
       );
 
+      // =================================================
+      // CANTIDAD
+      // =================================================
+
+      const quantity =
+        Number(item.quantity);
+
+      if (
+        !Number.isInteger(quantity) ||
+        quantity <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message:
+            `Cantidad inválida para ${product.title}.`,
+        });
+      }
+
+      // =================================================
+      // BUSCAR VARIANTE
+      // =================================================
+
+      let variant = null;
+
+      if (
+        Array.isArray(product.variants) &&
+        product.variants.length > 0
+      ) {
+
+        // -----------------------------------------------
+        // 1. variantId
+        // -----------------------------------------------
+
+        if (item.variantId) {
+
+          variant =
+            product.variants.find(
+              (v) =>
+                String(v._id) ===
+                String(item.variantId)
+            );
+        }
+
+        // -----------------------------------------------
+        // 2. variantSku
+        // -----------------------------------------------
+
+        if (
+          !variant &&
+          item.variantSku
+        ) {
+
+          variant =
+            product.variants.find(
+              (v) =>
+                String(v.sku) ===
+                String(item.variantSku)
+            );
+        }
+
+        // -----------------------------------------------
+        // 3. SKU
+        // -----------------------------------------------
+
+        if (
+          !variant &&
+          item.sku
+        ) {
+
+          variant =
+            product.variants.find(
+              (v) =>
+                String(v.sku) ===
+                String(item.sku)
+            );
+        }
+
+        // -----------------------------------------------
+        // 4. selectedOptions
+        // -----------------------------------------------
+
+        if (
+          !variant &&
+          item.selectedOptions &&
+          typeof item.selectedOptions ===
+          "object"
+        ) {
+
+          variant =
+            product.variants.find(
+              (v) => {
+
+                if (
+                  !v.options ||
+                  typeof v.options !==
+                  "object"
+                ) {
+                  return false;
+                }
+
+                return Object.entries(
+                  item.selectedOptions
+                ).every(
+                  ([key, value]) =>
+                    String(
+                      v.options[key]
+                    ) ===
+                    String(value)
+                );
+              }
+            );
+        }
+
+        // -----------------------------------------------
+        // 5. selectedVariant
+        // -----------------------------------------------
+
+        if (
+          !variant &&
+          item.selectedVariant
+        ) {
+
+          const selectedVariant =
+            item.selectedVariant;
+
+          if (
+            selectedVariant._id
+          ) {
+
+            variant =
+              product.variants.find(
+                (v) =>
+                  String(v._id) ===
+                  String(
+                    selectedVariant._id
+                  )
+              );
+          }
+
+          if (
+            !variant &&
+            selectedVariant.sku
+          ) {
+
+            variant =
+              product.variants.find(
+                (v) =>
+                  String(v.sku) ===
+                  String(
+                    selectedVariant.sku
+                  )
+              );
+          }
+        }
+
+        // -----------------------------------------------
+        // VARIANTE OBLIGATORIA
+        // -----------------------------------------------
+
+        if (!variant) {
+
+          console.error(
+            "❌ VARIANTE NO ENCONTRADA"
+          );
+
+          console.error({
+            producto:
+              product.title,
+
+            variantId:
+              item.variantId || null,
+
+            variantSku:
+              item.variantSku || null,
+
+            sku:
+              item.sku || null,
+
+            selectedOptions:
+              item.selectedOptions ||
+              null,
+
+            selectedVariant:
+              item.selectedVariant ||
+              null,
+          });
+
+          return res.status(400).json({
+            ok: false,
+            message:
+              `No se encontró la variante seleccionada para ${product.title}.`,
+            producto:
+              product.title,
+            variantId:
+              item.variantId || null,
+            variantSku:
+              item.variantSku || null,
+          });
+        }
+      }
+
+      // =================================================
+      // STOCK DE LA VARIANTE
+      // =================================================
+
+      const stock =
+        variant
+          ? Number(variant.stock || 0)
+          : Number(
+            product.variants?.[0]?.stock ||
+            0
+          );
+
       console.log(
         "🎨 VARIANTE:",
-        selectedVariant
+        variant
           ? {
-              sku:
-                selectedVariant.sku,
-              color:
-                selectedVariant.color ||
-                selectedVariant.options?.color,
-              stock:
-                selectedVariant.stock,
-            }
+            id: variant._id,
+            sku: variant.sku,
+            options: variant.options,
+            stock: variant.stock,
+          }
           : "SIN VARIANTE"
       );
 
@@ -6311,75 +6281,55 @@ export const createWebOrderMP = async (req, res) => {
         stock
       );
 
-
-      if (
-        stock < quantity
-      ) {
-
-        const color =
-          selectedVariant?.color ||
-          selectedVariant?.options?.color ||
-          item.color ||
-          "";
-
+      if (stock < quantity) {
 
         return res.status(400).json({
           ok: false,
           message:
-            `No hay suficiente stock de ${product.title}${
-              color
-                ? ` - ${color}`
-                : ""
-            }.`,
+            `No hay suficiente stock de ${product.title}.`,
+          variante:
+            variant?.sku || null,
+          opciones:
+            variant?.options || {},
           stockDisponible:
             stock,
           solicitado:
             quantity,
         });
-
       }
 
-
-      // ===================================================
+      // =================================================
       // PRECIO
-      //
-      // Primero variante.
-      // Después precio oferta/lista del producto.
-      // ===================================================
+      // =================================================
 
       let price =
         Number(
-          selectedVariant?.price ??
+          variant?.price ??
           product.pricing?.sale ??
           product.pricing?.list ??
           product.variants?.[0]?.price ??
           0
         );
 
-
       if (
         !Number.isFinite(price) ||
         price <= 0
       ) {
-
         return res.status(400).json({
           ok: false,
           message:
             `El producto ${product.title} no tiene un precio válido.`,
         });
-
       }
-
 
       price =
         Math.round(
           price * 100
         ) / 100;
 
-
-      // ===================================================
-      // SUBTOTAL ITEM
-      // ===================================================
+      // =================================================
+      // SUBTOTAL
+      // =================================================
 
       const itemSubtotal =
         Math.round(
@@ -6388,76 +6338,41 @@ export const createWebOrderMP = async (req, res) => {
           100
         ) / 100;
 
+      // =================================================
+      // IMAGEN VARIANTE
+      // =================================================
 
-      // ===================================================
-      // IMAGEN DE VARIANTE
-      // ===================================================
+      let variantImage = "";
 
-      let image = "";
-
-
-      if (
-        selectedVariant?.image
-      ) {
+      if (variant?.image) {
 
         if (
-          typeof selectedVariant.image ===
+          typeof variant.image ===
           "string"
         ) {
 
-          image =
-            selectedVariant.image;
+          variantImage =
+            variant.image;
 
-        } else if (
-          selectedVariant.image?.url
-        ) {
+        } else {
 
-          image =
-            selectedVariant.image.url;
-
+          variantImage =
+            variant.image.url || "";
         }
-
       }
 
+      if (!variantImage) {
 
-      // Si no tiene imagen la variante
-      // usamos la primera del producto
-
-      if (!image) {
-
-        image =
+        variantImage =
           product.images?.[0]?.url ||
           "";
-
       }
 
+      // =================================================
+      // ITEM NORMALIZADO
+      // =================================================
 
-      // ===================================================
-      // COLOR
-      // ===================================================
-
-      const color =
-        selectedVariant?.color ||
-        selectedVariant?.options?.color ||
-        item.color ||
-        "";
-
-
-      // ===================================================
-      // SKU
-      // ===================================================
-
-      const finalVariantSku =
-        selectedVariant?.sku ||
-        variantSku ||
-        "";
-
-
-      // ===================================================
-      // PUSH ITEM
-      // ===================================================
-
-      normalizedItems.push({
+      const normalizedItem = {
 
         productId:
           product._id,
@@ -6466,9 +6381,30 @@ export const createWebOrderMP = async (req, res) => {
           product.title,
 
         sku:
-          finalVariantSku ||
+          variant?.sku ||
           product.sku ||
           "",
+
+        // ===============================================
+        // DATOS IMPORTANTES DE VARIANTE
+        // ===============================================
+
+        variantId:
+          variant?._id ||
+          null,
+
+        variantSku:
+          variant?.sku ||
+          null,
+
+        variantOptions:
+          variant?.options ||
+          item.selectedOptions ||
+          {},
+
+        // ===============================================
+        // PRECIO
+        // ===============================================
 
         price,
 
@@ -6477,38 +6413,33 @@ export const createWebOrderMP = async (req, res) => {
         subtotal:
           itemSubtotal,
 
-        image,
+        // ===============================================
+        // IMAGEN
+        // ===============================================
+
+        image:
+          variantImage,
+
+        // ===============================================
+        // PRODUCTO
+        // ===============================================
 
         brand:
-          product.brand ||
-          "",
+          product.brand || "",
 
         category:
-          product.category ||
-          "",
+          product.category || "",
+      };
 
-        // =============================================
-        // VARIANTE
-        // =============================================
+      console.log(
+        "🛒 ITEM NORMALIZADO:",
+        normalizedItem
+      );
 
-        variantId:
-          selectedVariant?._id ||
-          selectedVariant?.sku ||
-          variantId ||
-          null,
-
-        variantSku:
-          finalVariantSku ||
-          null,
-
-        color:
-          color ||
-          null,
-
-      });
-
+      normalizedItems.push(
+        normalizedItem
+      );
     }
-
 
     // =====================================================
     // SUBTOTAL
@@ -6526,13 +6457,11 @@ export const createWebOrderMP = async (req, res) => {
         ) * 100
       ) / 100;
 
-
     // =====================================================
     // ENVÍO
     // =====================================================
 
     let envio = 0;
-
 
     if (
       deliveryType === "delivery"
@@ -6542,29 +6471,23 @@ export const createWebOrderMP = async (req, res) => {
         Number(
           shippingCost || 0
         );
-
     }
-
 
     if (
       !Number.isFinite(envio) ||
       envio < 0
     ) {
-
       return res.status(400).json({
         ok: false,
         message:
           "Costo de envío inválido.",
       });
-
     }
-
 
     envio =
       Math.round(
         envio * 100
       ) / 100;
-
 
     // =====================================================
     // TOTAL
@@ -6578,6 +6501,9 @@ export const createWebOrderMP = async (req, res) => {
         ) * 100
       ) / 100;
 
+    console.log(
+      "===================================="
+    );
 
     console.log(
       "💰 SUBTOTAL:",
@@ -6594,6 +6520,14 @@ export const createWebOrderMP = async (req, res) => {
       total
     );
 
+    console.log(
+      "📦 ITEMS FINALES:",
+      normalizedItems
+    );
+
+    console.log(
+      "===================================="
+    );
 
     // =====================================================
     // GENERAR ORDEN
@@ -6609,14 +6543,11 @@ export const createWebOrderMP = async (req, res) => {
         .toString()
         .padStart(4, "0");
 
-
     const orderNumber =
       `WEB-${timestamp}`;
 
-
     const externalReference =
       `TOKKEN-WEB-${timestamp}-${random}`;
-
 
     // =====================================================
     // CREAR WEB ORDER
@@ -6630,7 +6561,6 @@ export const createWebOrderMP = async (req, res) => {
         externalReference,
 
         customer: {
-
           name:
             nombre,
 
@@ -6642,7 +6572,6 @@ export const createWebOrderMP = async (req, res) => {
 
           phone:
             telefono,
-
         },
 
         delivery: {
@@ -6664,7 +6593,6 @@ export const createWebOrderMP = async (req, res) => {
 
           shippingCost:
             envio,
-
         },
 
         items:
@@ -6678,7 +6606,6 @@ export const createWebOrderMP = async (req, res) => {
             envio,
 
           total,
-
         },
 
         status:
@@ -6686,18 +6613,14 @@ export const createWebOrderMP = async (req, res) => {
 
         stockDiscounted:
           false,
-
       });
 
-
     await webOrder.save();
-
 
     console.log(
       "🟡 ORDEN WEB CREADA:",
       webOrder._id
     );
-
 
     // =====================================================
     // VALIDAR TOKEN MP
@@ -6718,9 +6641,7 @@ export const createWebOrderMP = async (req, res) => {
         message:
           "Mercado Pago no está configurado.",
       });
-
     }
-
 
     // =====================================================
     // CLIENTE MERCADO PAGO
@@ -6732,15 +6653,13 @@ export const createWebOrderMP = async (req, res) => {
           process.env.MP_ACCESS_TOKEN,
       });
 
-
     const mpPreference =
       new Preference(
         mpClient
       );
 
-
     // =====================================================
-    // ITEMS MP
+    // ITEMS MERCADO PAGO
     // =====================================================
 
     const mpItems =
@@ -6749,18 +6668,27 @@ export const createWebOrderMP = async (req, res) => {
 
           id:
             String(
+              item.variantSku ||
               item.productId
             ),
 
           title:
-            item.color
-              ? `${item.title} - ${item.color}`
+            item.variantOptions &&
+              Object.keys(
+                item.variantOptions
+              ).length > 0
+              ? `${item.title} - ${Object.entries(
+                item.variantOptions
+              )
+                .map(
+                  ([key, value]) =>
+                    `${key}: ${value}`
+                )
+                .join(", ")}`
               : item.title,
 
           description:
-            item.variantSku
-              ? `SKU: ${item.variantSku}`
-              : item.title,
+            item.title,
 
           quantity:
             item.quantity,
@@ -6769,19 +6697,15 @@ export const createWebOrderMP = async (req, res) => {
             "ARS",
 
           unit_price:
-            item.price,
-
+            Number(item.price),
         })
       );
 
-
     // =====================================================
-    // ENVÍO MP
+    // ENVÍO MERCADO PAGO
     // =====================================================
 
-    if (
-      envio > 0
-    ) {
+    if (envio > 0) {
 
       mpItems.push({
 
@@ -6802,39 +6726,37 @@ export const createWebOrderMP = async (req, res) => {
 
         unit_price:
           envio,
-
       });
-
     }
 
-
     // =====================================================
-    // URL BACKEND
+    // BACKEND URL
     // =====================================================
 
     const backendUrl =
       (
         process.env.BACKEND_URL ||
         "https://tokkenback2.onrender.com"
-      )
-        .replace(/\/$/, "");
-
+      ).replace(
+        /\/$/,
+        ""
+      );
 
     const notificationUrl =
       `${backendUrl}/api/orders/web-mp/webhook`;
 
-
     // =====================================================
-    // URL FRONTEND
+    // FRONTEND URL
     // =====================================================
 
     const frontendUrl =
       (
         process.env.FRONTEND_URL ||
         "https://tokkencba.com"
-      )
-        .replace(/\/$/, "");
-
+      ).replace(
+        /\/$/,
+        ""
+      );
 
     // =====================================================
     // CREAR PREFERENCE
@@ -6844,6 +6766,10 @@ export const createWebOrderMP = async (req, res) => {
       "🟡 CREANDO PREFERENCE MERCADO PAGO..."
     );
 
+    console.log(
+      "🔔 NOTIFICATION URL:",
+      notificationUrl
+    );
 
     const response =
       await mpPreference.create({
@@ -6865,12 +6791,9 @@ export const createWebOrderMP = async (req, res) => {
               email,
 
             phone: {
-
               number:
                 telefono,
-
             },
-
           },
 
           external_reference:
@@ -6889,16 +6812,12 @@ export const createWebOrderMP = async (req, res) => {
 
             pending:
               `${frontendUrl}/pago/pendiente`,
-
           },
 
           auto_return:
             "approved",
-
         },
-
       });
-
 
     // =====================================================
     // VALIDAR RESPONSE
@@ -6912,25 +6831,19 @@ export const createWebOrderMP = async (req, res) => {
       throw new Error(
         "Mercado Pago no devolvió un preferenceId."
       );
-
     }
-
 
     // =====================================================
     // GUARDAR PREFERENCE
     // =====================================================
 
     webOrder.mercadoPago =
-      webOrder.mercadoPago ||
-      {};
-
+      webOrder.mercadoPago || {};
 
     webOrder.mercadoPago.preferenceId =
       response.id;
 
-
     await webOrder.save();
-
 
     // =====================================================
     // RESPUESTA
@@ -6968,10 +6881,10 @@ export const createWebOrderMP = async (req, res) => {
       "===================================="
     );
 
-
     return res.status(201).json({
 
-      ok: true,
+      ok:
+        true,
 
       orderId:
         webOrder._id,
@@ -6985,9 +6898,7 @@ export const createWebOrderMP = async (req, res) => {
         response.init_point,
 
       externalReference,
-
     });
-
 
   } catch (error) {
 
@@ -7007,18 +6918,20 @@ export const createWebOrderMP = async (req, res) => {
       "===================================="
     );
 
-
     // =====================================================
-    // ELIMINAR ORDEN SI FALLÓ
+    // ELIMINAR ORDEN SI FALLÓ MP
     // =====================================================
 
-    if (
-      webOrder?._id
-    ) {
+    if (webOrder?._id) {
 
       try {
 
         await WebOrder.findByIdAndDelete(
+          webOrder._id
+        );
+
+        console.log(
+          "🗑️ ORDEN WEB ELIMINADA POR ERROR:",
           webOrder._id
         );
 
@@ -7028,15 +6941,13 @@ export const createWebOrderMP = async (req, res) => {
           "❌ ERROR ELIMINANDO ORDEN:",
           deleteError
         );
-
       }
-
     }
-
 
     return res.status(500).json({
 
-      ok: false,
+      ok:
+        false,
 
       message:
         "No se pudo crear el pedido.",
@@ -7044,11 +6955,8 @@ export const createWebOrderMP = async (req, res) => {
       error:
         error?.message ||
         "Error desconocido.",
-
     });
-
   }
-
 };
 export const obtenerWebOrder = async (req, res) => {
 
@@ -7187,8 +7095,8 @@ export const downloadWebOrderPDF = async (req, res) => {
 
     const fecha = webOrder.paidAt
       ? new Date(webOrder.paidAt).toLocaleString(
-          "es-AR"
-        )
+        "es-AR"
+      )
       : new Date().toLocaleString("es-AR");
 
     doc
@@ -7219,8 +7127,7 @@ export const downloadWebOrderPDF = async (req, res) => {
       .fontSize(10)
       .font("Helvetica")
       .text(
-        `Nombre: ${customer.name || ""} ${
-          customer.surname || ""
+        `Nombre: ${customer.name || ""} ${customer.surname || ""
         }`
       );
 
@@ -7323,7 +7230,7 @@ export const downloadWebOrderPDF = async (req, res) => {
 
       const itemSubtotal = Number(
         item.subtotal ??
-          price * quantity
+        price * quantity
       );
 
       const title = String(
@@ -7463,8 +7370,8 @@ export const downloadWebOrderPDF = async (req, res) => {
     doc.text(
       shipping > 0
         ? `Envío: $${shipping.toLocaleString(
-            "es-AR"
-          )}`
+          "es-AR"
+        )}`
         : "Envío: Gratis",
       {
         align: "right",
@@ -7507,8 +7414,7 @@ export const downloadWebOrderPDF = async (req, res) => {
       webOrder.mercadoPago?.paymentMethodId
     ) {
       doc.text(
-        `Método: ${
-          webOrder.mercadoPago.paymentMethodId
+        `Método: ${webOrder.mercadoPago.paymentMethodId
         }`
       );
     }
@@ -7517,8 +7423,7 @@ export const downloadWebOrderPDF = async (req, res) => {
       webOrder.mercadoPago?.paymentId
     ) {
       doc.text(
-        `ID de pago: ${
-          webOrder.mercadoPago.paymentId
+        `ID de pago: ${webOrder.mercadoPago.paymentId
         }`
       );
     }
