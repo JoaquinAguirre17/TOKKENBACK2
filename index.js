@@ -120,6 +120,12 @@ const seedUsers = async () => {
         nombre: "gonzalo",
         rol: "owner",
       },
+      {
+        username: "keila",
+        password: "keila2026",
+        nombre: "Keila",
+        rol: "vendedor",
+      },
 
     ];
 
@@ -184,7 +190,7 @@ const allowedOrigins = [
 
 app.use(cors({
 
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
 
     if (
       !origin ||
@@ -299,7 +305,7 @@ console.log(
     );
 
     // ✅ CREAR USUARIOS
-    await seedUsers(); 
+    await seedUsers();
     /*await updatePasswords();*/
 
     // ✅ RUTAS
