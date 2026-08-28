@@ -1461,6 +1461,7 @@ export const createOrder = async (req, res) => {
     const {
       productos,
       metodoPago,
+      pagos = [],
       cuotas = 1,
       vendedor,
       total,
@@ -1469,7 +1470,11 @@ export const createOrder = async (req, res) => {
     } = req.body;
 
     console.log("========== VENTA ==========");
-    console.log("VENTA RECIBIDA:", JSON.stringify(req.body, null, 2));
+    console.log(
+      "VENTA RECIBIDA:",
+      JSON.stringify(req.body, null, 2)
+    );
+
 
     /* =========================
        VALIDAR PRODUCTOS
@@ -1485,24 +1490,34 @@ export const createOrder = async (req, res) => {
 
     }
 
+
     /* =========================
        OBTENER PRODUCTOS DB
     ========================= */
 
-    const ids = productos.map(
-      p => p.productId
-    );
+    const ids =
+      productos.map(
+        p => p.productId
+      );
 
     const productosDb =
       await Product.find({
-        _id: { $in: ids }
+        _id: {
+          $in: ids
+        }
       }).session(session);
 
-    const mapProd = new Map(
-      productosDb.map(
-        p => [String(p._id), p]
-      )
-    );
+
+    const mapProd =
+      new Map(
+        productosDb.map(
+          p => [
+            String(p._id),
+            p
+          ]
+        )
+      );
+
 
     /* =========================
        NORMALIZAR ITEMS
@@ -1510,12 +1525,18 @@ export const createOrder = async (req, res) => {
 
     const normItems = [];
 
-    for (const p of productos) {
+
+    for (
+      const p of productos
+    ) {
 
       const db =
         mapProd.get(
-          String(p.productId)
+          String(
+            p.productId
+          )
         );
+
 
       if (!db) {
 
@@ -1525,18 +1546,17 @@ export const createOrder = async (req, res) => {
 
       }
 
+
       /* =========================
          BUSCAR VARIANTE
       ========================= */
 
       let variante = null;
 
-      /*
-       * Si viene variantSku buscamos
-       * específicamente esa variante.
-       */
 
-      if (p.variantSku) {
+      if (
+        p.variantSku
+      ) {
 
         variante =
           db.variants?.find(
@@ -1547,9 +1567,10 @@ export const createOrder = async (req, res) => {
 
       }
 
+
       /*
-       * Compatibilidad con productos
-       * antiguos sin variantes seleccionadas.
+       * Compatibilidad productos
+       * antiguos
        */
 
       if (!variante) {
@@ -1565,6 +1586,7 @@ export const createOrder = async (req, res) => {
 
       }
 
+
       /* =========================
          VALIDAR VARIANTE
       ========================= */
@@ -1572,10 +1594,16 @@ export const createOrder = async (req, res) => {
       if (!variante) {
 
         throw new Error(
-          `Variante no encontrada para ${db.title}. SKU variante: ${p.variantSku || "no informado"}`
+
+          `Variante no encontrada para ${db.title}. SKU variante: ${
+            p.variantSku ||
+            "no informado"
+          }`
+
         );
 
       }
+
 
       /* =========================
          STOCK
@@ -1586,12 +1614,17 @@ export const createOrder = async (req, res) => {
           variante.stock ?? 0
         );
 
+
       const qty =
         Number(
           p.cantidad ?? 1
         );
 
-      if (!Number.isInteger(qty) || qty <= 0) {
+
+      if (
+        !Number.isInteger(qty) ||
+        qty <= 0
+      ) {
 
         throw new Error(
           `Cantidad inválida para ${db.title}`
@@ -1599,13 +1632,26 @@ export const createOrder = async (req, res) => {
 
       }
 
-      if (stockActual < qty) {
+
+      if (
+        stockActual < qty
+      ) {
 
         throw new Error(
-          `Stock insuficiente de ${db.title} - ${variante.options?.color || "sin color"}. Disponible: ${stockActual}`
+
+          `Stock insuficiente de ${
+            db.title
+          } - ${
+            variante.options?.color ||
+            "sin color"
+          }. Disponible: ${
+            stockActual
+          }`
+
         );
 
       }
+
 
       /* =========================
          PRECIO
@@ -1619,6 +1665,7 @@ export const createOrder = async (req, res) => {
           variante?.price ??
           0
         );
+
 
       /* =========================
          ITEM NORMALIZADO
@@ -1639,7 +1686,8 @@ export const createOrder = async (req, res) => {
           variante.sku,
 
         color:
-          variante.options?.color || "",
+          variante.options?.color ||
+          "",
 
         price,
 
@@ -1652,28 +1700,42 @@ export const createOrder = async (req, res) => {
 
     }
 
+
     /* =========================
        TOTAL PRODUCTOS
     ========================= */
 
     const itemsTotal =
       normItems.reduce(
-        (a, b) =>
-          a + b.subtotal,
+        (
+          a,
+          b
+        ) =>
+          a +
+          b.subtotal,
+
         0
       );
+
 
     /* =========================
        DESCUENTO
     ========================= */
 
+    const porcentajeDescuento =
+      Number(
+        descuentoPorcentaje
+      );
+
+
     const subtotal =
       itemsTotal -
       (
         itemsTotal *
-        Number(descuentoPorcentaje) /
+        porcentajeDescuento /
         100
       );
+
 
     /* =========================
        RECARGO TARJETA
@@ -1681,21 +1743,33 @@ export const createOrder = async (req, res) => {
 
     let porcentajeRecargo = 0;
 
-    if (metodoPago === "Crédito") {
 
-      if (Number(cuotas) === 3) {
+    if (
+      metodoPago ===
+      "Crédito"
+    ) {
 
-        porcentajeRecargo = 10;
+      if (
+        Number(cuotas) === 3
+      ) {
+
+        porcentajeRecargo =
+          10;
 
       }
 
-      if (Number(cuotas) === 6) {
 
-        porcentajeRecargo = 20;
+      if (
+        Number(cuotas) === 6
+      ) {
+
+        porcentajeRecargo =
+          20;
 
       }
 
     }
+
 
     /* =========================
        TOTAL FINAL
@@ -1709,14 +1783,25 @@ export const createOrder = async (req, res) => {
         100
       );
 
+
     console.log({
+
       itemsTotal,
-      descuentoPorcentaje,
+
+      descuentoPorcentaje:
+        porcentajeDescuento,
+
       subtotal,
+
       porcentajeRecargo,
+
       totalFinal,
-      totalFrontend: total
+
+      totalFrontend:
+        total
+
     });
+
 
     /* =========================
        VALIDAR TOTAL
@@ -1724,7 +1809,9 @@ export const createOrder = async (req, res) => {
 
     if (
       Math.round(totalFinal) !==
-      Math.round(Number(total))
+      Math.round(
+        Number(total)
+      )
     ) {
 
       await session.abortTransaction();
@@ -1744,6 +1831,215 @@ export const createOrder = async (req, res) => {
 
     }
 
+
+    /* =====================================================
+       PAGOS
+    ===================================================== */
+
+    let pagosNormalizados = [];
+
+
+    /*
+     * Si es pago combinado,
+     * usamos los pagos recibidos
+     */
+
+    if (
+      metodoPago ===
+      "Combinado"
+    ) {
+
+
+      if (
+        !Array.isArray(pagos) ||
+        pagos.length < 2
+      ) {
+
+        await session.abortTransaction();
+
+        return res.status(400).json({
+
+          message:
+            "Un pago combinado debe tener al menos dos medios de pago"
+
+        });
+
+      }
+
+
+      /*
+       * Normalizar pagos
+       */
+
+      pagosNormalizados =
+        pagos.map(
+          pago => ({
+
+            method:
+              String(
+                pago.metodo ||
+                pago.method ||
+                ""
+              ),
+
+            amount:
+              Number(
+                pago.monto ??
+                pago.amount ??
+                0
+              )
+
+          })
+        );
+
+
+      /*
+       * Validar métodos
+       */
+
+      const pagoInvalido =
+        pagosNormalizados.some(
+          pago =>
+
+            !pago.method ||
+
+            !Number.isFinite(
+              pago.amount
+            ) ||
+
+            pago.amount <= 0
+
+        );
+
+
+      if (
+        pagoInvalido
+      ) {
+
+        await session.abortTransaction();
+
+        return res.status(400).json({
+
+          message:
+            "Los pagos combinados contienen datos inválidos"
+
+        });
+
+      }
+
+
+      /*
+       * No permitir métodos repetidos
+       */
+
+      const metodos =
+        pagosNormalizados.map(
+          pago =>
+            pago.method
+        );
+
+
+      const metodosUnicos =
+        new Set(
+          metodos
+        );
+
+
+      if (
+        metodosUnicos.size !==
+        metodos.length
+      ) {
+
+        await session.abortTransaction();
+
+        return res.status(400).json({
+
+          message:
+            "No se puede repetir el mismo medio de pago"
+
+        });
+
+      }
+
+
+      /*
+       * Total de pagos
+       */
+
+      const totalPagos =
+        pagosNormalizados.reduce(
+          (
+            suma,
+            pago
+          ) =>
+
+            suma +
+            pago.amount,
+
+          0
+        );
+
+
+      /*
+       * Validar que los pagos
+       * coincidan con la venta
+       */
+
+      if (
+        Math.round(totalPagos) !==
+        Math.round(totalFinal)
+      ) {
+
+        await session.abortTransaction();
+
+        return res.status(400).json({
+
+          message:
+            "Los pagos no coinciden con el total de la venta",
+
+          totalVenta:
+            totalFinal,
+
+          totalPagado:
+            totalPagos
+
+        });
+
+      }
+
+    }
+
+    else {
+
+      /*
+       * Venta normal:
+       * creamos automáticamente
+       * un único pago.
+       */
+
+      pagosNormalizados = [
+
+        {
+
+          method:
+            metodoPago,
+
+          amount:
+            totalFinal
+
+        }
+
+      ];
+
+    }
+
+
+    console.log(
+      "💳 PAGOS NORMALIZADOS:",
+      pagosNormalizados
+    );
+
+
     /* =========================
        NÚMERO DE ORDEN
     ========================= */
@@ -1751,10 +2047,12 @@ export const createOrder = async (req, res) => {
     const orderNumber =
       await generateOrderNumber();
 
+
     const now =
       dayjs()
         .tz(TZ)
         .toDate();
+
 
     /* =========================
        CREAR ORDEN
@@ -1768,15 +2066,14 @@ export const createOrder = async (req, res) => {
         items:
           normItems,
 
+
         totals: {
 
           items:
             itemsTotal,
 
           discountPercentage:
-            Number(
-              descuentoPorcentaje
-            ),
+            porcentajeDescuento,
 
           subtotal,
 
@@ -1784,6 +2081,7 @@ export const createOrder = async (req, res) => {
             totalFinal
 
         },
+
 
         payment: {
 
@@ -1799,10 +2097,18 @@ export const createOrder = async (req, res) => {
           amount:
             totalFinal,
 
+          /*
+           * NUEVO
+           */
+
+          payments:
+            pagosNormalizados,
+
           paidAt:
             now
 
         },
+
 
         createdBy:
           vendedor,
@@ -1814,6 +2120,7 @@ export const createOrder = async (req, res) => {
 
       });
 
+
     /* =========================
        GUARDAR ORDEN
     ========================= */
@@ -1822,58 +2129,83 @@ export const createOrder = async (req, res) => {
       session
     });
 
+
     console.log(
       "🟢 ORDER GUARDADA:",
       order
     );
 
+
     /* =====================================================
        DESCONTAR STOCK POR VARIANTE
     ===================================================== */
 
-    for (const item of normItems) {
+    for (
+      const item of normItems
+    ) {
+
 
       /*
-       * Si tiene SKU de variante,
-       * descontamos específicamente esa variante.
+       * Variante con SKU
        */
 
-      if (item.variantSku) {
+      if (
+        item.variantSku
+      ) {
+
 
         const resultado =
           await Product.updateOne(
 
             {
+
               _id:
                 item.productId,
 
               variants: {
+
                 $elemMatch: {
+
                   sku:
                     item.variantSku,
 
                   stock: {
+
                     $gte:
                       item.qty
+
                   }
+
                 }
+
               }
 
             },
 
+
             {
+
               $inc: {
+
                 "variants.$[variant].stock":
                   -item.qty
+
               }
+
             },
 
+
             {
+
               arrayFilters: [
+
                 {
+
                   "variant.sku":
                     item.variantSku
+
                 }
+
               ],
 
               session
@@ -1882,39 +2214,56 @@ export const createOrder = async (req, res) => {
 
           );
 
-        /*
-         * Si modifiedCount es 0,
-         * significa que el stock cambió
-         * o la variante no existe.
-         */
 
         if (
-          resultado.modifiedCount === 0
+          resultado.modifiedCount ===
+          0
         ) {
 
           throw new Error(
-            `No se pudo descontar stock de ${item.title} - ${item.color} - SKU ${item.variantSku}`
+
+            `No se pudo descontar stock de ${
+              item.title
+            } - ${
+              item.color
+            } - SKU ${
+              item.variantSku
+            }`
+
           );
 
         }
 
+
         console.log(
-          `📦 STOCK DESCONTADO: ${item.title} | Color: ${item.color} | SKU: ${item.variantSku} | Cantidad: ${item.qty}`
+
+          `📦 STOCK DESCONTADO: ${
+            item.title
+          } | Color: ${
+            item.color
+          } | SKU: ${
+            item.variantSku
+          } | Cantidad: ${
+            item.qty
+          }`
+
         );
 
       }
 
+
       /*
-       * Compatibilidad con productos
-       * antiguos que no tienen SKU de variante.
+       * Producto antiguo
        */
 
       else {
+
 
         const resultado =
           await Product.updateOne(
 
             {
+
               _id:
                 item.productId,
 
@@ -1926,37 +2275,58 @@ export const createOrder = async (req, res) => {
 
             },
 
+
             {
+
               $inc: {
+
                 "variants.0.stock":
                   -item.qty
+
               }
 
             },
 
+
             {
+
               session
+
             }
 
           );
 
+
         if (
-          resultado.modifiedCount === 0
+          resultado.modifiedCount ===
+          0
         ) {
 
           throw new Error(
-            `No se pudo descontar stock de ${item.title}`
+
+            `No se pudo descontar stock de ${
+              item.title
+            }`
+
           );
 
         }
 
+
         console.log(
-          `📦 STOCK DESCONTADO PRODUCTO ANTIGUO: ${item.title} | Cantidad: ${item.qty}`
+
+          `📦 STOCK DESCONTADO PRODUCTO ANTIGUO: ${
+            item.title
+          } | Cantidad: ${
+            item.qty
+          }`
+
         );
 
       }
 
     }
+
 
     /* =========================
        COMMIT
@@ -1964,9 +2334,11 @@ export const createOrder = async (req, res) => {
 
     await session.commitTransaction();
 
+
     console.log(
       "🟢 TRANSACCIÓN COMPLETADA"
     );
+
 
     return res.status(201).json({
 
@@ -1977,11 +2349,14 @@ export const createOrder = async (req, res) => {
 
     });
 
-  } catch (error) {
+
+  } catch (
+    error
+  ) {
+
 
     /*
-     * Solo abortamos si la transacción
-     * sigue activa.
+     * ABORTAR
      */
 
     try {
@@ -1994,19 +2369,26 @@ export const createOrder = async (req, res) => {
 
       }
 
-    } catch (abortError) {
+    } catch (
+      abortError
+    ) {
 
       console.error(
+
         "Error abortando transacción:",
+
         abortError
+
       );
 
     }
+
 
     console.error(
       "❌ ERROR CREANDO ORDEN:",
       error
     );
+
 
     return res.status(400).json({
 
@@ -2018,6 +2400,7 @@ export const createOrder = async (req, res) => {
         error.message
 
     });
+
 
   } finally {
 
