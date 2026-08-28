@@ -1069,398 +1069,421 @@ export const createProduct = async (req, res) => {
 /* =========================================================
    UPDATE PRODUCT
 ========================================================= */
-
 export const updateProduct = async (req, res) => {
-
   try {
+    const body = req.body.product
+      ? JSON.parse(req.body.product)
+      : { ...req.body };
 
-    const body =
-      req.body.product
-        ? JSON.parse(req.body.product)
-        : { ...req.body };
-
-
-    const product =
-      await Product.findById(
-        req.params.id
-      );
-
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
-
       return res.status(404).json({
-
-        error:
-          "Producto no encontrado"
-
+        error: "Producto no encontrado",
       });
-
     }
 
+    console.log("========== UPDATE PRODUCT ==========");
+    console.log("FILES:", req.files?.length || 0);
 
-    console.log(
-      "========== UPDATE PRODUCT =========="
-    );
-
-    console.log(
-      "FILES:",
-      req.files?.length || 0
-    );
-
-
-    /* =========================
+    /* =====================================================
        SKU PRINCIPAL
-    ========================= */
+    ===================================================== */
 
     if (!body.sku) {
-
       body.sku =
         product.sku ||
         generateSKU(
-          body.title ||
-          product.title,
-
-          body.brand ||
-          product.brand
+          body.title || product.title,
+          body.brand || product.brand
         );
-
     }
 
-
-    /* =========================
+    /* =====================================================
        IMÁGENES GENERALES
-    ========================= */
+    ===================================================== */
 
     let finalImages = [];
 
+    if (Array.isArray(body.images)) {
+      finalImages = body.images
+        .filter(Boolean)
+        .map((img) => {
+          /* -----------------------------------------------
+             STRING / URL
+          ------------------------------------------------ */
 
-    if (
-      Array.isArray(body.images)
-    ) {
+          if (typeof img === "string") {
+            return {
+              source: "url",
+              url: img,
+              alt:
+                body.title ||
+                product.title,
+            };
+          }
 
-      finalImages =
-        body.images
-          .filter(Boolean)
-          .map(img => {
+          /* -----------------------------------------------
+             IMAGEN EXISTENTE DE MONGO
 
+             El frontend manda:
+
+             {
+               source: "mongo",
+               existing: true
+             }
+
+             En este caso NO debemos guardar ese objeto.
+
+             Debemos conservar la imagen real que ya
+             estaba almacenada en MongoDB.
+          ------------------------------------------------ */
+
+          if (
+            img.source === "mongo" &&
+            img.existing === true
+          ) {
             /*
-            URL
-            */
+             * Si además tenemos existingIndex,
+             * usamos exactamente esa imagen.
+             */
 
             if (
-              typeof img === "string"
+              img.existingIndex !== undefined &&
+              product.images?.[
+                Number(img.existingIndex)
+              ]
             ) {
-
-              return {
-
-                source:
-                  "url",
-
-                url:
-                  img,
-
-                alt:
-                  body.title ||
-                  product.title
-
-              };
-
-            }
-
-
-            /*
-            Imagen Mongo existente.
-            La conservamos desde el producto,
-            no desde el Buffer enviado por frontend.
-            */
-
-            if (
-              img.source === "mongo" &&
-              img.existingIndex !== undefined
-            ) {
-
               return product.images[
-                Number(
-                  img.existingIndex
-                )
+                Number(img.existingIndex)
               ];
-
             }
-
 
             /*
-            URL
-            */
+             * Si el frontend no manda índice pero manda
+             * una imagen existente, intentamos conservar
+             * una imagen equivalente.
+             */
 
-            if (
-              img.url &&
-              img.source === "url"
-            ) {
+            if (img.url) {
+              const existingImage =
+                product.images?.find(
+                  (oldImage) =>
+                    oldImage?.url === img.url
+                );
 
-              return {
-
-                source:
-                  "url",
-
-                url:
-                  img.url,
-
-                alt:
-                  img.alt ||
-                  body.title ||
-                  product.title
-
-              };
-
+              if (existingImage) {
+                return existingImage;
+              }
             }
 
+            /*
+             * Si no podemos identificarla de otra forma,
+             * no guardamos el objeto { existing: true }.
+             *
+             * Esto evita que ese objeto termine
+             * reemplazando el Buffer real.
+             */
 
-            return img;
+            return null;
+          }
 
-          });
+          /* -----------------------------------------------
+             IMAGEN POR URL
+          ------------------------------------------------ */
 
+          if (
+            img.source === "url" &&
+            img.url
+          ) {
+            return {
+              source: "url",
+              url: img.url,
+              alt:
+                img.alt ||
+                body.title ||
+                product.title,
+            };
+          }
+
+          /* -----------------------------------------------
+             URL SIN SOURCE
+          ------------------------------------------------ */
+
+          if (img.url) {
+            return {
+              source: "url",
+              url: img.url,
+              alt:
+                img.alt ||
+                body.title ||
+                product.title,
+            };
+          }
+
+          /*
+           * Evitamos guardar objetos de control del
+           * frontend como imágenes.
+           */
+
+          return null;
+        })
+        .filter(Boolean);
     }
-
 
     /*
-    Si el frontend no mandó
-    imágenes generales, conservar.
-    */
+     * Si el frontend no mandó imágenes, conservar todas
+     * las imágenes anteriores.
+     */
 
     if (
-      finalImages.length === 0
+      !Array.isArray(body.images) ||
+      body.images.length === 0
     ) {
-
-      finalImages =
-        [...product.images];
-
+      finalImages = [
+        ...(product.images || []),
+      ];
     }
 
+    /*
+     * Seguridad adicional:
+     *
+     * Si el frontend mandó imágenes pero alguna existente
+     * no pudo resolverse, no reemplazamos accidentalmente
+     * todas las imágenes por una lista vacía.
+     */
 
-    /* =========================
+    if (
+      Array.isArray(body.images) &&
+      body.images.length > 0 &&
+      finalImages.length === 0 &&
+      product.images?.length
+    ) {
+      finalImages = [
+        ...(product.images || []),
+      ];
+    }
+
+    /* =====================================================
        VARIANTES
-    ========================= */
+    ===================================================== */
 
-    let variants =
-      Array.isArray(body.variants)
-        ? body.variants
-        : [];
-
+    let variants = Array.isArray(body.variants)
+      ? body.variants
+      : [];
 
     const oldVariants =
       product.variants || [];
 
+    variants = variants.map(
+      (variant, index) => {
+        const oldVariant =
+          oldVariants[index];
 
-    variants =
-      variants.map(
-        (variant, index) => {
+        const color =
+          variant.options?.color ||
+          "";
 
-          const oldVariant =
-            oldVariants[index];
+        /* -----------------------------------------------
+           SKU VARIANTE
+        ------------------------------------------------ */
 
+        let variantSKU =
+          variant.sku;
 
-          const color =
-            variant.options?.color ||
-            "";
+        if (!variantSKU) {
+          const colorClean =
+            color
+              .toUpperCase()
+              .trim()
+              .replace(/\s+/g, "-")
+              .replace(
+                /[^A-Z0-9ÁÉÍÓÚÑ-]/g,
+                ""
+              );
 
-
-          /* =====================
-             SKU
-          ===================== */
-
-          let variantSKU =
-            variant.sku;
-
-
-          if (!variantSKU) {
-
-            const colorClean =
-              color
-                .toUpperCase()
-                .trim()
-                .replace(
-                  /\s+/g,
-                  "-"
-                )
-                .replace(
-                  /[^A-Z0-9-ÁÉÍÓÚÑ]/g,
-                  ""
-                );
-
-
-            variantSKU =
-              `${body.sku || product.sku}-${colorClean ||
+          variantSKU =
+            `${body.sku || product.sku}-${
+              colorClean ||
               `VAR-${index + 1}`
-              }`;
-
-          }
-
-
-          /* =====================
-             IMAGEN
-          ===================== */
-
-          let image;
-
-
-          /*
-          URL nueva
-          */
-
-          if (
-            variant.image?.source ===
-            "url" &&
-            variant.image?.url
-          ) {
-
-            image = {
-
-              source:
-                "url",
-
-              url:
-                variant.image.url,
-
-              alt:
-                variant.image.alt ||
-                `${body.title || product.title} ${color}`.trim()
-
-            };
-
-          }
-
-
-          /*
-          Imagen existente en Mongo.
-
-          existing: true significa:
-          "conservar la anterior"
-          */
-
-          else if (
-            variant.image?.existing === true &&
-            oldVariant?.image
-          ) {
-
-            image =
-              oldVariant.image;
-
-          }
-
-
-          /*
-          Si no mandó información de imagen,
-          conservamos la existente.
-          */
-
-          else if (
-            !variant.image &&
-            oldVariant?.image
-          ) {
-
-            image =
-              oldVariant.image;
-
-          }
-
-
-          return {
-
-            ...variant,
-
-            sku:
-              variantSKU,
-
-            options: {
-
-              ...(variant.options || {}),
-
-              color
-
-            },
-
-            image,
-
-            stock:
-              Number(
-                variant.stock || 0
-              ),
-
-            stockMinimo:
-              Number(
-                variant.stockMinimo || 0
-              ),
-
-            stockIdeal:
-              Number(
-                variant.stockIdeal || 0
-              )
-
-          };
-
+            }`;
         }
-      );
 
+        /* -----------------------------------------------
+           IMAGEN VARIANTE
+        ------------------------------------------------ */
 
-    /* =========================
+        let image;
+
+        /*
+         * 1. IMAGEN NUEVA POR URL
+         */
+
+        if (
+          variant.image?.source ===
+            "url" &&
+          variant.image?.url
+        ) {
+          image = {
+            source: "url",
+            url: variant.image.url,
+            alt:
+              variant.image.alt ||
+              `${body.title || product.title} ${color}`.trim(),
+          };
+        }
+
+        /*
+         * 2. IMAGEN EXISTENTE DE MONGO
+         *
+         * El frontend manda:
+         *
+         * {
+         *   source: "mongo",
+         *   existing: true
+         * }
+         *
+         * En este caso usamos SIEMPRE:
+         *
+         * oldVariant.image
+         */
+
+        else if (
+          variant.image?.source ===
+            "mongo" &&
+          variant.image?.existing === true
+        ) {
+          image =
+            oldVariant?.image;
+
+          console.log(
+            "♻️ CONSERVANDO IMAGEN EXISTENTE DE VARIANTE:",
+            {
+              index,
+              color,
+              existe: !!image,
+            }
+          );
+        }
+
+        /*
+         * 3. NO SE MANDÓ IMAGEN
+         *
+         * También conservamos la anterior.
+         */
+
+        else if (
+          !variant.image &&
+          oldVariant?.image
+        ) {
+          image =
+            oldVariant.image;
+
+          console.log(
+            "♻️ VARIANTE SIN IMAGEN NUEVA, CONSERVANDO ANTERIOR:",
+            {
+              index,
+              color,
+            }
+          );
+        }
+
+        /*
+         * 4. CASO EN QUE EL FRONT MANDE UN OBJETO
+         *    DE MONGO SIN existing
+         *
+         * Por seguridad también conservamos
+         * la imagen anterior.
+         */
+
+        else if (
+          variant.image?.source ===
+            "mongo" &&
+          oldVariant?.image
+        ) {
+          image =
+            oldVariant.image;
+        }
+
+        /* -----------------------------------------------
+           RESULTADO DE VARIANTE
+        ------------------------------------------------ */
+
+        return {
+          ...variant,
+
+          sku:
+            variantSKU,
+
+          options: {
+            ...(variant.options || {}),
+            color,
+          },
+
+          image,
+
+          stock:
+            Number(
+              variant.stock ?? 0
+            ),
+
+          stockMinimo:
+            Number(
+              variant.stockMinimo ?? 0
+            ),
+
+          stockIdeal:
+            Number(
+              variant.stockIdeal ?? 0
+            ),
+        };
+      }
+    );
+
+    /* =====================================================
        ARCHIVOS NUEVOS
-    ========================= */
+    ===================================================== */
 
-    if (
-      req.files?.length
-    ) {
-
-      for (
-        const file of req.files
-      ) {
-
+    if (req.files?.length) {
+      for (const file of req.files) {
         console.log(
           "ARCHIVO:",
           file.originalname
         );
 
-
-        /* =====================
-           VARIANTE
-        ===================== */
+        /* -----------------------------------------------
+           IMAGEN DE VARIANTE
+        ------------------------------------------------ */
 
         if (
           file.originalname.startsWith(
             "variant_"
           )
         ) {
-
           const match =
             file.originalname.match(
               /^variant_(\d+)_/
             );
 
-
           if (match) {
-
             const variantIndex =
               Number(match[1]);
-
 
             if (
               variants[variantIndex]
             ) {
-
               const color =
                 variants[
                   variantIndex
                 ]
-                  .options
+                  ?.options
                   ?.color ||
                 "";
-
 
               variants[
                 variantIndex
               ].image = {
-
-                source:
-                  "mongo",
+                source: "mongo",
 
                 data:
                   file.buffer,
@@ -1469,10 +1492,8 @@ export const updateProduct = async (req, res) => {
                   file.mimetype,
 
                 alt:
-                  `${body.title || product.title} ${color}`.trim()
-
+                  `${body.title || product.title} ${color}`.trim(),
               };
-
 
               console.log(
                 "✅ IMAGEN NUEVA GUARDADA EN VARIANTE:",
@@ -1480,27 +1501,20 @@ export const updateProduct = async (req, res) => {
                   index:
                     variantIndex,
 
-                  color
+                  color,
                 }
               );
-
             }
-
           }
-
         }
 
-
-        /* =====================
-           GENERAL
-        ===================== */
+        /* -----------------------------------------------
+           IMAGEN GENERAL NUEVA
+        ------------------------------------------------ */
 
         else {
-
           finalImages.push({
-
-            source:
-              "mongo",
+            source: "mongo",
 
             data:
               file.buffer,
@@ -1510,23 +1524,22 @@ export const updateProduct = async (req, res) => {
 
             alt:
               body.title ||
-              product.title
-
+              product.title,
           });
 
+          console.log(
+            "✅ IMAGEN GENERAL NUEVA AGREGADA:",
+            file.originalname
+          );
         }
-
       }
-
     }
 
-
-    /* =========================
-       ACTUALIZAR
-    ========================= */
+    /* =====================================================
+       ACTUALIZAR PRODUCTO
+    ===================================================== */
 
     product.set({
-
       ...body,
 
       sku:
@@ -1536,50 +1549,46 @@ export const updateProduct = async (req, res) => {
       variants,
 
       images:
-        finalImages
-
+        finalImages,
     });
 
+    /* =====================================================
+       GUARDAR
+    ===================================================== */
 
     const updated =
       await product.save();
 
+    console.log(
+      "✅ PRODUCTO ACTUALIZADO:",
+      updated._id
+    );
 
     return res.json({
-
-      ok:
-        true,
+      ok: true,
 
       message:
         "Producto actualizado correctamente",
 
       product:
-        updated
-
+        updated,
     });
 
   } catch (error) {
-
     console.error(
-      "ERROR UPDATE PRODUCT:",
+      "❌ ERROR UPDATE PRODUCT:",
       error
     );
 
-
     return res.status(500).json({
-
       error:
         "Error interno actualizando producto",
 
       detail:
-        error.message
-
+        error.message,
     });
-
   }
-
 };
-
 
 /* =========================================================
    OBTENER IMAGEN DE UNA VARIANTE
