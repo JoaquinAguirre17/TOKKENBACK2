@@ -22,7 +22,7 @@ import {
   updateProduct,
   deleteProduct,
   getProductImage,
-
+  getVariantImage,
   /* =====================================================
      ÓRDENES
   ===================================================== */
@@ -134,6 +134,16 @@ router.get(
 );
 
 router.get(
+  "/products/:id/image/:index",
+  getProductImage
+);
+
+router.get(
+  "/products/:id/variant/:variantId/image",
+  getVariantImage
+);
+
+router.get(
   "/products/:id",
   getProductById
 );
@@ -154,13 +164,6 @@ router.delete(
   "/products/:id",
   deleteProduct
 );
-
-router.get(
-  "/products/:id/image/:index",
-  getProductImage
-);
-
-
 /* =====================================================
    CREAR ORDEN WEB + MERCADO PAGO
 ===================================================== */

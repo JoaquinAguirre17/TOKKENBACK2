@@ -621,98 +621,137 @@ export const searchProducts = async (req, res) => {
 CREATE PRODUCT
 =========================================================
 */
-
 export const createProduct = async (req, res) => {
+
   try {
+
+
     const body =
       req.body.product
         ? JSON.parse(req.body.product)
         : { ...req.body };
 
-    /* =========================
+
+    /* =====================================================
        VALIDACIONES
-    ========================= */
+    ===================================================== */
 
     if (!body.title) {
+
       return res.status(400).json({
         error: "title es requerido"
       });
+
     }
+
 
     if (
       body.pricing?.list === undefined ||
       body.pricing?.list === null ||
       body.pricing?.list === ""
     ) {
+
       return res.status(400).json({
         error: "pricing.list es requerido"
       });
+
     }
 
-    /* =========================
+
+    /* =====================================================
        SKU PRINCIPAL
-    ========================= */
+    ===================================================== */
 
     if (!body.sku) {
-      body.sku = generateSKU(
-        body.title,
-        body.brand
-      );
+
+      body.sku =
+        generateSKU(
+          body.title,
+          body.brand
+        );
+
     }
+
 
     console.log(
       "========== CREATE PRODUCT =========="
     );
 
     console.log(
-      "FILES:",
+      "PRODUCTO:",
+      body.title
+    );
+
+    console.log(
+      "ARCHIVOS RECIBIDOS:",
       req.files?.length || 0
     );
 
-    /* =========================
-       IMÁGENES GENERALES
-    ========================= */
 
-    let finalImages = [];
+    /* =====================================================
+       IMÁGENES GENERALES
+    ===================================================== */
+
+    const finalImages = [];
+
 
     if (Array.isArray(body.images)) {
-      finalImages.push(
-        ...body.images
-          .filter(Boolean)
-          .map(img => {
 
-            if (typeof img === "string") {
-              return {
-                url: img,
-                alt: body.title,
-                source: "url"
-              };
-            }
+      body.images
+        .filter(Boolean)
+        .forEach(img => {
 
-            if (img.url) {
-              return {
-                url: img.url,
-                alt:
-                  img.alt ||
-                  body.title,
-                source: "url"
-              };
-            }
+          if (typeof img === "string") {
 
-            return img;
+            finalImages.push({
 
-          })
-      );
+              source: "url",
+
+              url: img,
+
+              alt:
+                body.title
+
+            });
+
+            return;
+
+          }
+
+
+          if (
+            img.url &&
+            img.source !== "mongo"
+          ) {
+
+            finalImages.push({
+
+              source: "url",
+
+              url: img.url,
+
+              alt:
+                img.alt ||
+                body.title
+
+            });
+
+          }
+
+        });
+
     }
 
-    /* =========================
+
+    /* =====================================================
        VARIANTES
-    ========================= */
+    ===================================================== */
 
     let variants =
       Array.isArray(body.variants)
         ? body.variants
         : [];
+
 
     variants =
       variants.map(
@@ -722,8 +761,14 @@ export const createProduct = async (req, res) => {
             variant.options?.color ||
             "";
 
+
+          /* =================================================
+             SKU VARIANTE
+          ================================================= */
+
           let variantSKU =
             variant.sku;
+
 
           if (!variantSKU) {
 
@@ -733,47 +778,56 @@ export const createProduct = async (req, res) => {
                 .trim()
                 .replace(/\s+/g, "-")
                 .replace(
-                  /[^A-Z0-9-ÁÉÍÓÚÑ]/g,
+                  /[^A-Z0-9ÁÉÍÓÚÑ-]/g,
                   ""
                 );
+
 
             variantSKU =
               `${body.sku}-${colorClean || `VAR-${index + 1}`}`;
 
           }
 
-          /*
-          IMPORTANTE:
-          no confiamos en datos "existing"
-          enviados desde el frontend.
-          La imagen real se asigna abajo
-          si viene un archivo.
-          */
 
-          let image;
+          /* =================================================
+             IMAGEN URL
+          ================================================= */
+
+          let image =
+            undefined;
+
 
           if (
-            variant.image?.source === "url" &&
             variant.image?.url
           ) {
+
             image = {
+
               source: "url",
-              url: variant.image.url,
+
+              url:
+                variant.image.url,
+
               alt:
                 variant.image.alt ||
                 `${body.title} ${color}`.trim()
+
             };
+
           }
 
+
           return {
-            ...variant,
 
             sku:
               variantSKU,
 
             options: {
+
               ...(variant.options || {}),
+
               color
+
             },
 
             image,
@@ -791,114 +845,139 @@ export const createProduct = async (req, res) => {
             stockIdeal:
               Number(
                 variant.stockIdeal || 0
-              )
+              ),
+
+            price:
+              variant.price !== undefined
+                ? Number(variant.price)
+                : undefined
 
           };
 
         }
       );
 
-    /* =========================
-       ARCHIVOS
-    ========================= */
 
-    if (req.files?.length) {
+    /* =====================================================
+       ARCHIVOS SUBIDOS
+    ===================================================== */
 
-      for (const file of req.files) {
+    if (
+      Array.isArray(req.files) &&
+      req.files.length > 0
+    ) {
+
+      for (
+        const file of req.files
+      ) {
 
         console.log(
           "ARCHIVO RECIBIDO:",
           file.originalname
         );
 
-        /* =========================
+
+        /* =================================================
            IMAGEN DE VARIANTE
-        ========================= */
+    
+           FORMATO:
+    
+           variant_0_nombre.jpg
+           variant_1_nombre.jpg
+        ================================================= */
 
-        if (
-          file.originalname.startsWith(
-            "variant_"
-          )
-        ) {
+        const match =
+          file.originalname.match(
+            /^variant_(\d+)_/i
+          );
 
-          const match =
-            file.originalname.match(
-              /^variant_(\d+)_/
-            );
 
-          if (match) {
+        if (match) {
 
-            const variantIndex =
-              Number(match[1]);
+          const variantIndex =
+            Number(match[1]);
 
-            if (
-              variants[variantIndex]
-            ) {
 
-              variants[
-                variantIndex
-              ].image = {
+          if (
+            variants[variantIndex]
+          ) {
 
-                source:
-                  "mongo",
+            variants[
+              variantIndex
+            ].image = {
 
-                data:
-                  file.buffer,
+              source:
+                "mongo",
 
-                contentType:
-                  file.mimetype,
+              url:
+                "",
 
-                alt:
-                  `${body.title} ${
-                    variants[
-                      variantIndex
-                    ].options?.color || ""
+              data:
+                file.buffer,
+
+              contentType:
+                file.mimetype,
+
+              alt:
+                `${body.title} ${variants[
+                    variantIndex
+                  ].options?.color || ""
                   }`.trim()
 
-              };
+            };
 
-              console.log(
-                "✅ Imagen asignada:",
+
+            console.log(
+              "IMAGEN ASIGNADA A VARIANTE:",
+              variantIndex,
+              variants[
                 variantIndex
-              );
-
-            }
+              ].options?.color
+            );
 
           }
 
+          continue;
+
         }
 
-        /* =========================
+
+        /* =================================================
            IMAGEN GENERAL
-        ========================= */
+        ================================================= */
 
-        else {
+        finalImages.push({
 
-          finalImages.push({
+          source:
+            "mongo",
 
-            source:
-              "mongo",
+          url:
+            "",
 
-            data:
-              file.buffer,
+          data:
+            file.buffer,
 
-            contentType:
-              file.mimetype,
+          contentType:
+            file.mimetype,
 
-            alt:
-              body.title
+          alt:
+            body.title
 
-          });
+        });
 
-        }
+
+        console.log(
+          "IMAGEN GENERAL AGREGADA"
+        );
 
       }
 
     }
 
-    /* =========================
-       GUARDAR
-    ========================= */
+
+    /* =====================================================
+       GUARDAR DATOS
+    ===================================================== */
 
     body.variants =
       variants;
@@ -906,38 +985,84 @@ export const createProduct = async (req, res) => {
     body.images =
       finalImages;
 
-    const created =
-      await Product.create(body);
 
     console.log(
-      "PRODUCTO CREADO:",
-      created._id
+      "========== RESUMEN =========="
     );
 
-    return res.status(201).json({
 
-      ok: true,
+    console.log(
+      "IMÁGENES GENERALES:",
+      body.images.length
+    );
 
-      product:
-        created
 
-    });
+    console.log(
+      "VARIANTES:",
+      variants.map(
+        (v, index) => ({
+
+          index,
+
+          color:
+            v.options?.color,
+
+          sku:
+            v.sku,
+
+          image:
+            v.image?.source ||
+            "sin imagen"
+
+        })
+      )
+    );
+
+
+    /* =====================================================
+       CREAR PRODUCTO
+    ===================================================== */
+
+    const created =
+      await Product.create(
+        body
+      );
+
+
+    return res
+      .status(201)
+      .json({
+
+        ok:
+          true,
+
+        product:
+          created
+
+      });
+
 
   } catch (error) {
+
 
     console.error(
       "ERROR CREANDO PRODUCTO:",
       error
     );
 
-    return res.status(400).json({
 
-      error:
-        error.message
+    return res
+      .status(400)
+      .json({
 
-    });
+        error:
+          error.message
+
+      });
+
 
   }
+
 };
 
 
@@ -1164,9 +1289,8 @@ export const updateProduct = async (req, res) => {
 
 
             variantSKU =
-              `${body.sku || product.sku}-${
-                colorClean ||
-                `VAR-${index + 1}`
+              `${body.sku || product.sku}-${colorClean ||
+              `VAR-${index + 1}`
               }`;
 
           }
@@ -1754,9 +1878,8 @@ export const createOrder = async (req, res) => {
 
         throw new Error(
 
-          `Variante no encontrada para ${db.title}. SKU variante: ${
-            p.variantSku ||
-            "no informado"
+          `Variante no encontrada para ${db.title}. SKU variante: ${p.variantSku ||
+          "no informado"
           }`
 
         );
@@ -1798,13 +1921,10 @@ export const createOrder = async (req, res) => {
 
         throw new Error(
 
-          `Stock insuficiente de ${
-            db.title
-          } - ${
-            variante.options?.color ||
-            "sin color"
-          }. Disponible: ${
-            stockActual
+          `Stock insuficiente de ${db.title
+          } - ${variante.options?.color ||
+          "sin color"
+          }. Disponible: ${stockActual
           }`
 
         );
@@ -2381,12 +2501,9 @@ export const createOrder = async (req, res) => {
 
           throw new Error(
 
-            `No se pudo descontar stock de ${
-              item.title
-            } - ${
-              item.color
-            } - SKU ${
-              item.variantSku
+            `No se pudo descontar stock de ${item.title
+            } - ${item.color
+            } - SKU ${item.variantSku
             }`
 
           );
@@ -2396,14 +2513,10 @@ export const createOrder = async (req, res) => {
 
         console.log(
 
-          `📦 STOCK DESCONTADO: ${
-            item.title
-          } | Color: ${
-            item.color
-          } | SKU: ${
-            item.variantSku
-          } | Cantidad: ${
-            item.qty
+          `📦 STOCK DESCONTADO: ${item.title
+          } | Color: ${item.color
+          } | SKU: ${item.variantSku
+          } | Cantidad: ${item.qty
           }`
 
         );
@@ -2463,8 +2576,7 @@ export const createOrder = async (req, res) => {
 
           throw new Error(
 
-            `No se pudo descontar stock de ${
-              item.title
+            `No se pudo descontar stock de ${item.title
             }`
 
           );
@@ -2474,10 +2586,8 @@ export const createOrder = async (req, res) => {
 
         console.log(
 
-          `📦 STOCK DESCONTADO PRODUCTO ANTIGUO: ${
-            item.title
-          } | Cantidad: ${
-            item.qty
+          `📦 STOCK DESCONTADO PRODUCTO ANTIGUO: ${item.title
+          } | Cantidad: ${item.qty
           }`
 
         );
@@ -2510,7 +2620,7 @@ export const createOrder = async (req, res) => {
 
 
   } catch (
-    error
+  error
   ) {
 
 
@@ -2529,7 +2639,7 @@ export const createOrder = async (req, res) => {
       }
 
     } catch (
-      abortError
+    abortError
     ) {
 
       console.error(
@@ -3251,7 +3361,7 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
 
   } catch (
-    error
+  error
   ) {
 
     console.error(
