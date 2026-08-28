@@ -2550,55 +2550,94 @@ export const listOrders = async (req, res) => {
   }
 };
 export const obtenerVentasCierreCaja = async (req, res) => {
+
   try {
 
     const { fecha } = req.query;
 
+
     if (!fecha) {
 
       return res.status(400).json({
-        error: "Falta fecha",
+
+        error:
+          "Falta fecha",
+
       });
 
     }
 
-    const inicio = dayjs
-      .tz(fecha, TZ)
-      .startOf("day")
-      .toDate();
 
-    const fin = dayjs
-      .tz(fecha, TZ)
-      .endOf("day")
-      .toDate();
+    /* =========================
+       RANGO DEL DÍA
+    ========================= */
+
+    const inicio =
+      dayjs
+        .tz(
+          fecha,
+          TZ
+        )
+        .startOf("day")
+        .toDate();
+
+
+    const fin =
+      dayjs
+        .tz(
+          fecha,
+          TZ
+        )
+        .endOf("day")
+        .toDate();
+
 
     /* =========================
        VENTAS
     ========================= */
 
-    const orders = await Order.find({
+    const orders =
+      await Order.find({
 
-      "payment.status": "approved",
+        "payment.status":
+          "approved",
 
-      createdAt: {
-        $gte: inicio,
-        $lte: fin,
-      },
+        createdAt: {
 
-    }).lean();
+          $gte:
+            inicio,
+
+          $lte:
+            fin,
+
+        },
+
+      }).lean();
+
 
     /* =========================
        INGRESOS
     ========================= */
 
-    const ingresosDB = await Ingreso.find({
+    const ingresosDB =
+      await Ingreso.find({
 
-      createdAt: {
-        $gte: inicio,
-        $lte: fin,
-      },
+        createdAt: {
 
-    }).lean();
+          $gte:
+            inicio,
+
+          $lte:
+            fin,
+
+        },
+
+      }).lean();
+
+
+    /* =========================
+       ACUMULADORES
+    ========================= */
 
     const ventas = [];
 
@@ -2612,162 +2651,387 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
     let total = 0;
 
-    /* =========================
+
+    /* =====================================================
        PROCESAR VENTAS
-    ========================= */
+    ===================================================== */
 
-    orders.forEach((o) => {
+    orders.forEach(
+      (o) => {
 
-      const vendedor =
-        o?.createdBy || "No especificado";
 
-      const medioPago =
-        o?.payment?.method ||
-        "No especificado";
+        /* =========================
+           VENDEDOR
+        ========================= */
 
-      const fechaPago =
-        o?.createdAt;
+        const vendedor =
+          o?.createdBy ||
+          "No especificado";
 
-      const hora =
-        dayjs(fechaPago)
-          .tz(TZ)
-          .format("HH");
 
-      /* =========================
-         TOTAL REAL DE LA VENTA
-      ========================= */
-      const montoVenta = Math.round(
-        Number(o?.totals?.grand || 0)
-      );
+        /* =========================
+           FECHA / HORA
+        ========================= */
 
-      /* =========================
-         PRODUCTOS DE LA VENTA
-      ========================= */
+        const fechaPago =
+          o?.createdAt;
 
-      const nombresProductos =
-        o.items
-          ?.map(item => {
 
-            const cantidad =
-              Number(
-                item.qty || 1
+        const hora =
+          dayjs(
+            fechaPago
+          )
+            .tz(TZ)
+            .format("HH");
+
+
+        /* =========================
+           TOTAL REAL DE LA VENTA
+        ========================= */
+
+        const montoVenta =
+          Math.round(
+            Number(
+              o?.totals?.grand ||
+              0
+            )
+          );
+
+
+        /* =================================================
+           PAGOS
+        ================================================= */
+
+        /*
+         * Ventas nuevas:
+         *
+         * payment.payments
+         *
+         * Ventas antiguas:
+         *
+         * payment.method + payment.amount
+         */
+
+        let pagos = [];
+
+
+        if (
+          Array.isArray(
+            o?.payment?.payments
+          ) &&
+          o.payment.payments.length >
+          0
+        ) {
+
+          pagos =
+            o.payment.payments
+              .map(
+                pago => ({
+
+                  method:
+                    pago?.method ||
+                    "No especificado",
+
+                  amount:
+                    Math.round(
+                      Number(
+                        pago?.amount ||
+                        0
+                      )
+                    )
+
+                })
+              )
+              .filter(
+                pago =>
+                  pago.amount > 0
               );
-
-            return cantidad > 1
-              ? `${item.title} x${cantidad}`
-              : item.title;
-
-          })
-          .join(" + ");
-
-      /* =========================
-         TABLA DE VENTAS
-      ========================= */
-
-      ventas.push({
-
-        id: String(o._id),
-
-        producto:
-          nombresProductos,
-
-        vendedor,
-
-        medioPago,
-
-        monto:
-          montoVenta,
-
-        descuento:
-          Number(
-            o?.totals?.discountPercentage || 0
-          ),
-
-        fecha:
-          dayjs(fechaPago)
-            .tz(TZ)
-            .format("YYYY-MM-DD"),
-
-        hora:
-          dayjs(fechaPago)
-            .tz(TZ)
-            .format("HH:mm"),
-
-      });
-
-      /* =========================
-         RESUMENES
-      ========================= */
-
-      total += montoVenta;
-
-      porVendedor[vendedor] =
-        (porVendedor[vendedor] || 0) +
-        montoVenta;
-
-      porMedioPago[medioPago] =
-        (porMedioPago[medioPago] || 0) +
-        montoVenta;
-
-      porHora[hora] =
-        (porHora[hora] || 0) +
-        montoVenta;
-
-      /* =========================
-         ESTADISTICAS PRODUCTOS
-      ========================= */
-
-      o.items?.forEach(item => {
-
-        const nombre =
-          item.title || "Producto";
-
-        const cantidad =
-          Number(
-            item.qty || 1
-          );
-
-        const subtotal =
-          Number(
-            item.subtotal || 0
-          );
-
-        if (!productos[nombre]) {
-
-          productos[nombre] = {
-
-            cantidad: 0,
-
-            total: 0,
-
-          };
 
         }
 
-        productos[nombre].cantidad +=
-          cantidad;
 
-        productos[nombre].total +=
-          subtotal;
+        /*
+         * COMPATIBILIDAD CON VENTAS ANTIGUAS
+         */
 
-      });
+        if (
+          pagos.length === 0
+        ) {
 
-    });
+          pagos = [
 
-    /* =========================
+            {
+
+              method:
+                o?.payment?.method ||
+                "No especificado",
+
+              amount:
+                Math.round(
+                  Number(
+                    o?.payment?.amount ??
+                    montoVenta
+                  )
+                )
+
+            }
+
+          ];
+
+        }
+
+
+        /* =================================================
+           MEDIO DE PAGO PARA MOSTRAR EN TABLA
+        ================================================= */
+
+        const medioPago =
+          pagos
+            .map(
+              pago =>
+                `${pago.method} ${formatARS(
+                  pago.amount
+                )}`
+            )
+            .join(" + ");
+
+
+        /* =========================
+           PRODUCTOS
+        ========================= */
+
+        const nombresProductos =
+          o.items
+            ?.map(
+              item => {
+
+                const cantidad =
+                  Number(
+                    item.qty ||
+                    1
+                  );
+
+
+                return cantidad > 1
+
+                  ? `${item.title} x${cantidad}`
+
+                  : item.title;
+
+              }
+            )
+            .join(" + ");
+
+
+        /* =========================
+           TABLA DE VENTAS
+        ========================= */
+
+        ventas.push({
+
+          id:
+            String(
+              o._id
+            ),
+
+          producto:
+            nombresProductos,
+
+          vendedor,
+
+          /*
+           * Ahora puede mostrar:
+           *
+           * Efectivo $8.000 +
+           * Transferencia $12.000
+           */
+
+          medioPago,
+
+          monto:
+            montoVenta,
+
+          descuento:
+            Number(
+              o?.totals
+                ?.discountPercentage ||
+              0
+            ),
+
+          fecha:
+            dayjs(
+              fechaPago
+            )
+              .tz(TZ)
+              .format(
+                "YYYY-MM-DD"
+              ),
+
+          hora:
+            dayjs(
+              fechaPago
+            )
+              .tz(TZ)
+              .format(
+                "HH:mm"
+              ),
+
+        });
+
+
+        /* =================================================
+           TOTAL GENERAL
+        ================================================= */
+
+        total +=
+          montoVenta;
+
+
+        /* =================================================
+           POR VENDEDOR
+        ================================================= */
+
+        porVendedor[vendedor] =
+          (
+            porVendedor[vendedor] ||
+            0
+          ) +
+          montoVenta;
+
+
+        /* =================================================
+           POR MEDIO DE PAGO
+        ================================================= */
+
+        /*
+         * IMPORTANTE:
+         *
+         * Acá NO usamos "Combinado".
+         *
+         * Repartimos el importe real
+         * entre cada medio.
+         */
+
+        pagos.forEach(
+          pago => {
+
+            const metodo =
+              pago.method ||
+              "No especificado";
+
+
+            const monto =
+              Math.round(
+                Number(
+                  pago.amount ||
+                  0
+                )
+              );
+
+
+            porMedioPago[metodo] =
+              (
+                porMedioPago[metodo] ||
+                0
+              ) +
+              monto;
+
+          }
+        );
+
+
+        /* =================================================
+           POR HORA
+        ================================================= */
+
+        porHora[hora] =
+          (
+            porHora[hora] ||
+            0
+          ) +
+          montoVenta;
+
+
+        /* =================================================
+           ESTADÍSTICAS PRODUCTOS
+        ================================================= */
+
+        o.items?.forEach(
+          item => {
+
+            const nombre =
+              item.title ||
+              "Producto";
+
+
+            const cantidad =
+              Number(
+                item.qty ||
+                1
+              );
+
+
+            const subtotal =
+              Number(
+                item.subtotal ||
+                0
+              );
+
+
+            if (
+              !productos[nombre]
+            ) {
+
+              productos[nombre] = {
+
+                cantidad:
+                  0,
+
+                total:
+                  0,
+
+              };
+
+            }
+
+
+            productos[nombre]
+              .cantidad +=
+              cantidad;
+
+
+            productos[nombre]
+              .total +=
+              subtotal;
+
+          }
+        );
+
+      }
+    );
+
+
+    /* =====================================================
        PRODUCTOS INGRESADOS
-    ========================= */
+    ===================================================== */
 
-    const productosIngresados = [];
+    const productosIngresados =
+      [];
 
-    for (const ingreso of ingresosDB) {
 
-      for (const item of ingreso.items) {
+    for (
+      const ingreso of ingresosDB
+    ) {
+
+      for (
+        const item of ingreso.items
+      ) {
 
         const productoDB =
           await Product.findById(
             item.productId
           ).lean();
+
 
         productosIngresados.push({
 
@@ -2793,9 +3057,10 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
     }
 
-    /* =========================
+
+    /* =====================================================
        RESPUESTA
-    ========================= */
+    ===================================================== */
 
     res.json({
 
@@ -2825,12 +3090,19 @@ export const obtenerVentasCierreCaja = async (req, res) => {
 
     });
 
-  } catch (error) {
+
+  } catch (
+    error
+  ) {
 
     console.error(
+
       "❌ Error cierre caja:",
+
       error
+
     );
+
 
     res.status(500).json({
 
@@ -2843,7 +3115,33 @@ export const obtenerVentasCierreCaja = async (req, res) => {
     });
 
   }
+
 };
+
+
+/* =====================================================
+   FORMATO MONEDA
+===================================================== */
+
+const formatARS =
+  (value) =>
+
+    new Intl.NumberFormat(
+      "es-AR",
+      {
+
+        style:
+          "currency",
+
+        currency:
+          "ARS",
+
+        maximumFractionDigits:
+          0
+
+      }
+
+    ).format(value);
 // Obtener ventas por mes
 export const obtenerVentasPorMes = async (req, res) => {
   try {
