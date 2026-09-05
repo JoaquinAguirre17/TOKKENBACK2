@@ -4467,6 +4467,7 @@ export const getCashClosureModal = async (req, res) => {
     /* =========================
        FECHA INICIO / FIN
     ========================= */
+
     const inicio = dayjs
       .tz(fecha, TZ)
       .startOf("day")
@@ -4480,13 +4481,17 @@ export const getCashClosureModal = async (req, res) => {
     /* =========================
        BUSCAR ÓRDENES
     ========================= */
+
     console.log("📥 QUERY:", {
       fecha,
-      sessionId
+      sessionId,
     });
+
     console.log("📆 INICIO:", inicio);
     console.log("📆 FIN:", fin);
+
     const orders = await Order.find({
+
       "payment.status": "approved",
 
       createdAt: {
@@ -4497,9 +4502,9 @@ export const getCashClosureModal = async (req, res) => {
       ...(sessionId
         ? { sessionId }
         : {}),
+
     }).lean();
-    console.log("📆 INICIO:", inicio);
-    console.log("📆 FIN:", fin);
+
     console.log("=================================");
     console.log("💰 CIERRE DE CAJA MODAL");
     console.log("📅 FECHA:", fecha);
@@ -4510,6 +4515,7 @@ export const getCashClosureModal = async (req, res) => {
     /* =========================
        ACUMULADORES
     ========================= */
+
     let total = 0;
 
     const porMedioPago = {
@@ -4523,10 +4529,19 @@ export const getCashClosureModal = async (req, res) => {
     /* =========================
        RECORRER ÓRDENES
     ========================= */
+
     orders.forEach((o) => {
 
-      const amount = Number(
-        o?.totals?.grand || 0
+      /*
+       * Redondeamos cada venta antes
+       * de acumularla.
+       *
+       * Esto evita valores como:
+       * 15999.999999996
+       */
+
+      const amount = Math.round(
+        Number(o?.totals?.grand || 0)
       );
 
       total += amount;
@@ -4545,19 +4560,71 @@ export const getCashClosureModal = async (req, res) => {
       if (
         porMedioPago[medioPago] !== undefined
       ) {
+
         porMedioPago[medioPago] += amount;
+
       }
 
     });
 
     /* =========================
+       REDONDEAR TOTALES
+    ========================= */
+
+    total = Math.round(total);
+
+    Object.keys(porMedioPago).forEach(
+      (medio) => {
+
+        porMedioPago[medio] =
+          Math.round(
+            porMedioPago[medio]
+          );
+
+      }
+    );
+
+    /* =========================
+       LOG FINAL
+    ========================= */
+
+    console.log("=================================");
+    console.log("💰 TOTAL:", total);
+    console.log(
+      "💵 EFECTIVO:",
+      porMedioPago["Efectivo"]
+    );
+    console.log(
+      "🏦 TRANSFERENCIA:",
+      porMedioPago["Transferencia"]
+    );
+    console.log(
+      "💳 DÉBITO:",
+      porMedioPago["Débito"]
+    );
+    console.log(
+      "💳 CRÉDITO:",
+      porMedioPago["Crédito"]
+    );
+    console.log(
+      "📱 QR OPENPAY:",
+      porMedioPago["QR Openpay"]
+    );
+    console.log("=================================");
+
+    /* =========================
        RESPUESTA
     ========================= */
+
     return res.json({
 
       resumen: {
+
         total,
-        cantidadVentas: orders.length,
+
+        cantidadVentas:
+          orders.length,
+
       },
 
       porMedioPago,
@@ -4572,9 +4639,16 @@ export const getCashClosureModal = async (req, res) => {
     );
 
     return res.status(500).json({
-      message: "Error obteniendo cierre",
-      error: error.message,
-      stack: error.stack,
+
+      message:
+        "Error obteniendo cierre",
+
+      error:
+        error.message,
+
+      stack:
+        error.stack,
+
     });
 
   }
